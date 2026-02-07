@@ -36,8 +36,10 @@ public sealed class InMemoryStorage : IStorage
     /// <summary>
     /// Сохраняет метаданные инструмента.
     /// </summary>
+    /// <exception cref="ArgumentException">Метаданные инструмента невалидны.</exception>
     public Task StoreInstrumentAsync(InstrumentMetadata metadata, CancellationToken cancellationToken)
     {
+        ValidateInstrumentMetadata(metadata);
         _instruments.Add(metadata);
         return Task.CompletedTask;
     }
@@ -58,5 +60,65 @@ public sealed class InMemoryStorage : IStorage
     {
         _alerts.Add(alert);
         return Task.CompletedTask;
+    }
+
+    private static void ValidateInstrumentMetadata(InstrumentMetadata metadata)
+    {
+        if (string.IsNullOrWhiteSpace(metadata.Exchange))
+        {
+            throw new ArgumentException("Поле Exchange должно быть задано.", nameof(metadata));
+        }
+
+        if (string.IsNullOrWhiteSpace(metadata.Symbol))
+        {
+            throw new ArgumentException("Поле Symbol должно быть задано.", nameof(metadata));
+        }
+
+        if (string.IsNullOrWhiteSpace(metadata.BaseAsset))
+        {
+            throw new ArgumentException("Поле BaseAsset должно быть задано.", nameof(metadata));
+        }
+
+        if (string.IsNullOrWhiteSpace(metadata.QuoteAsset))
+        {
+            throw new ArgumentException("Поле QuoteAsset должно быть задано.", nameof(metadata));
+        }
+
+        if (metadata.PriceTickSize <= 0)
+        {
+            throw new ArgumentException("Поле PriceTickSize должно быть больше нуля.", nameof(metadata));
+        }
+
+        if (metadata.VolumeStep <= 0)
+        {
+            throw new ArgumentException("Поле VolumeStep должно быть больше нуля.", nameof(metadata));
+        }
+
+        if (metadata.PriceDecimals < 0)
+        {
+            throw new ArgumentException("Поле PriceDecimals не может быть отрицательным.", nameof(metadata));
+        }
+
+        if (metadata.VolumeDecimals < 0)
+        {
+            throw new ArgumentException("Поле VolumeDecimals не может быть отрицательным.", nameof(metadata));
+        }
+
+        if (metadata.MarketType == MarketType.Perp)
+        {
+            if (metadata.ContractSize is null || metadata.ContractSize <= 0)
+            {
+                throw new ArgumentException("Для рынка perp поле ContractSize должно быть задано и больше нуля.", nameof(metadata));
+            }
+        }
+        else if (metadata.ContractSize is not null)
+        {
+            throw new ArgumentException("Для рынка spot поле ContractSize должно быть null.", nameof(metadata));
+        }
+
+        if (metadata.MinNotional is not null && metadata.MinNotional <= 0)
+        {
+            throw new ArgumentException("Поле MinNotional должно быть больше нуля (или null).", nameof(metadata));
+        }
     }
 }

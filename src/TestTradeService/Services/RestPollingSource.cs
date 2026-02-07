@@ -13,16 +13,19 @@ public sealed class RestPollingSource : IMarketDataSource
 {
     private readonly ILogger<RestPollingSource> _logger;
     private readonly MarketInstrumentsConfig _instrumentsConfig;
+    private readonly IStorage _storage;
 
     /// <summary>
     /// Инициализирует источник REST polling.
     /// </summary>
     /// <param name="logger">Логгер источника.</param>
     /// <param name="instrumentsConfig">Конфигурация инструментов.</param>
-    public RestPollingSource(ILogger<RestPollingSource> logger, MarketInstrumentsConfig instrumentsConfig)
+    /// <param name="storage">Слой хранения.</param>
+    public RestPollingSource(ILogger<RestPollingSource> logger, MarketInstrumentsConfig instrumentsConfig, IStorage storage)
     {
         _logger = logger;
         _instrumentsConfig = instrumentsConfig;
+        _storage = storage;
     }
 
     /// <summary>
@@ -50,6 +53,8 @@ public sealed class RestPollingSource : IMarketDataSource
         var pollInterval = profile.TargetUpdateInterval;
         var random = Random.Shared;
 
+        await StoreInstrumentMetadataAsync(profile, cancellationToken);
+
         _logger.LogInformation("REST polling source started");
 
         while (!cancellationToken.IsCancellationRequested)
@@ -74,5 +79,40 @@ public sealed class RestPollingSource : IMarketDataSource
         }
 
         writer.TryComplete();
+    }
+
+    private async Task StoreInstrumentMetadataAsync(MarketInstrumentProfile profile, CancellationToken cancellationToken)
+    {
+        foreach (var symbol in profile.Symbols)
+        {
+            var (baseAsset, quoteAsset) = ParseSymbol(symbol);
+            await _storage.StoreInstrumentAsync(new InstrumentMetadata
+            {
+                Exchange = Name,
+                MarketType = profile.MarketType,
+                Symbol = symbol,
+                BaseAsset = baseAsset,
+                QuoteAsset = quoteAsset,
+                Description = $"{symbol} ({profile.MarketType})",
+                PriceTickSize = 0.01m,
+                VolumeStep = 0.0001m,
+                PriceDecimals = 2,
+                VolumeDecimals = 4,
+                ContractSize = null,
+                MinNotional = 10m
+            }, cancellationToken);
+        }
+    }
+
+    private static (string BaseAsset, string QuoteAsset) ParseSymbol(string symbol)
+    {
+        var parts = symbol
+            .Split(new[] { '-', '/', '_' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        return parts.Length switch
+        {
+            2 => (parts[0], parts[1]),
+            _ => (symbol, "UNKNOWN")
+        };
     }
 }

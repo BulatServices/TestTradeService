@@ -13,16 +13,19 @@ public sealed class WebSocketSource : IMarketDataSource
 {
     private readonly ILogger<WebSocketSource> _logger;
     private readonly MarketInstrumentsConfig _instrumentsConfig;
+    private readonly IStorage _storage;
 
     /// <summary>
     /// Инициализирует источник WebSocket.
     /// </summary>
     /// <param name="logger">Логгер источника.</param>
     /// <param name="instrumentsConfig">Конфигурация инструментов.</param>
-    public WebSocketSource(ILogger<WebSocketSource> logger, MarketInstrumentsConfig instrumentsConfig)
+    /// <param name="storage">Слой хранения.</param>
+    public WebSocketSource(ILogger<WebSocketSource> logger, MarketInstrumentsConfig instrumentsConfig, IStorage storage)
     {
         _logger = logger;
         _instrumentsConfig = instrumentsConfig;
+        _storage = storage;
     }
 
     /// <summary>
@@ -46,9 +49,17 @@ public sealed class WebSocketSource : IMarketDataSource
             return;
         }
 
-        var symbols = profile.Symbols.ToArray();
+        var symbols = profile.Symbols?.ToArray() ?? Array.Empty<string>();
+        if (symbols.Length == 0)
+        {
+            _logger.LogWarning("Профиль perp не содержит символов. WebSocket-поток остановлен.");
+            writer.TryComplete();
+            return;
+        }
         var tickInterval = profile.TargetUpdateInterval;
         var random = Random.Shared;
+
+        await StoreInstrumentMetadataAsync(profile, cancellationToken);
 
         _logger.LogInformation("WebSocket source started");
 
@@ -71,5 +82,40 @@ public sealed class WebSocketSource : IMarketDataSource
         }
 
         writer.TryComplete();
+    }
+
+    private async Task StoreInstrumentMetadataAsync(MarketInstrumentProfile profile, CancellationToken cancellationToken)
+    {
+        foreach (var symbol in profile.Symbols)
+        {
+            var (baseAsset, quoteAsset) = ParseSymbol(symbol);
+            await _storage.StoreInstrumentAsync(new InstrumentMetadata
+            {
+                Exchange = Name,
+                MarketType = profile.MarketType,
+                Symbol = symbol,
+                BaseAsset = baseAsset,
+                QuoteAsset = quoteAsset,
+                Description = $"{symbol} ({profile.MarketType})",
+                PriceTickSize = 0.1m,
+                VolumeStep = 0.001m,
+                PriceDecimals = 1,
+                VolumeDecimals = 3,
+                ContractSize = 1m,
+                MinNotional = 10m
+            }, cancellationToken);
+        }
+    }
+
+    private static (string BaseAsset, string QuoteAsset) ParseSymbol(string symbol)
+    {
+        var parts = symbol
+            .Split(new[] { '-', '/', '_' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        return parts.Length switch
+        {
+            2 => (parts[0], parts[1]),
+            _ => (symbol, "UNKNOWN")
+        };
     }
 }

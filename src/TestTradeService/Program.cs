@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using TestTradeService.Interfaces;
 using TestTradeService.Ingestion.Configuration;
 using TestTradeService.Ingestion.Management;
+using TestTradeService.Models;
 using TestTradeService.Monitoring;
 using TestTradeService.Monitoring.Configuration;
 using TestTradeService.Services;

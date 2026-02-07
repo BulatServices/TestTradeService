@@ -1,20 +1,6 @@
+using TestTradeService.Models;
+
 namespace TestTradeService.Ingestion.Configuration;
-
-/// <summary>
-/// Тип рынка для набора инструментов.
-/// </summary>
-public enum MarketType
-{
-    /// <summary>
-    /// Спотовый рынок.
-    /// </summary>
-    Spot,
-
-    /// <summary>
-    /// Перпетуальные контракты.
-    /// </summary>
-    Perp
-}
 
 /// <summary>
 /// Описание набора инструментов для конкретного рынка.
