@@ -1,6 +1,7 @@
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using TestTradeService.Interfaces;
+using TestTradeService.Ingestion.Configuration;
 using TestTradeService.Models;
 
 namespace TestTradeService.Services;
@@ -11,13 +12,17 @@ namespace TestTradeService.Services;
 public sealed class RestPollingSource : IMarketDataSource
 {
     private readonly ILogger<RestPollingSource> _logger;
+    private readonly MarketInstrumentsConfig _instrumentsConfig;
 
     /// <summary>
     /// Инициализирует источник REST polling.
     /// </summary>
-    public RestPollingSource(ILogger<RestPollingSource> logger)
+    /// <param name="logger">Логгер источника.</param>
+    /// <param name="instrumentsConfig">Конфигурация инструментов.</param>
+    public RestPollingSource(ILogger<RestPollingSource> logger, MarketInstrumentsConfig instrumentsConfig)
     {
         _logger = logger;
+        _instrumentsConfig = instrumentsConfig;
     }
 
     /// <summary>
@@ -28,9 +33,21 @@ public sealed class RestPollingSource : IMarketDataSource
     /// <summary>
     /// Запускает генерацию/чтение тиков и отправляет их в канал.
     /// </summary>
+    /// <param name="writer">Канал для публикации тиков.</param>
+    /// <param name="cancellationToken">Токен отмены.</param>
+    /// <returns>Задача выполнения цикла polling.</returns>
     public async Task StartAsync(ChannelWriter<Tick> writer, CancellationToken cancellationToken)
     {
-        var symbols = new[] { "BTC-USD", "ETH-USD", "SOL-USD" };
+        var profile = _instrumentsConfig.GetProfile(MarketType.Spot);
+        if (profile is null)
+        {
+            _logger.LogWarning("Не настроены инструменты для рынка spot. REST polling остановлен.");
+            writer.TryComplete();
+            return;
+        }
+
+        var symbols = profile.Symbols;
+        var pollInterval = profile.TargetUpdateInterval;
         var random = Random.Shared;
 
         _logger.LogInformation("REST polling source started");
@@ -53,7 +70,7 @@ public sealed class RestPollingSource : IMarketDataSource
                 await writer.WriteAsync(tick, cancellationToken);
             }
 
-            await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
+            await Task.Delay(pollInterval, cancellationToken);
         }
 
         writer.TryComplete();

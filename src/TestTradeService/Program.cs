@@ -2,8 +2,10 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using TestTradeService.Interfaces;
+using TestTradeService.Ingestion.Configuration;
 using TestTradeService.Ingestion.Management;
 using TestTradeService.Monitoring;
+using TestTradeService.Monitoring.Configuration;
 using TestTradeService.Services;
 using TestTradeService.Storage;
 
@@ -11,6 +13,28 @@ var host = Host.CreateDefaultBuilder(args)
     .ConfigureServices((_, services) =>
     {
         services.AddSingleton<ChannelFactory>();
+        services.AddSingleton(new MarketInstrumentsConfig
+        {
+            Profiles = new[]
+            {
+                new MarketInstrumentProfile
+                {
+                    MarketType = MarketType.Spot,
+                    Symbols = new[] { "BTC-USD", "ETH-USD", "SOL-USD" },
+                    TargetUpdateInterval = TimeSpan.FromSeconds(2)
+                },
+                new MarketInstrumentProfile
+                {
+                    MarketType = MarketType.Perp,
+                    Symbols = new[] { "BTC-USD", "ETH-USD", "XRP-USD" },
+                    TargetUpdateInterval = TimeSpan.FromMilliseconds(100)
+                }
+            }
+        });
+        services.AddSingleton(new MonitoringSlaConfig
+        {
+            MaxTickDelay = TimeSpan.FromSeconds(2)
+        });
         services.AddSingleton<IStorage, InMemoryStorage>();
         services.AddSingleton<IMonitoringService, MonitoringService>();
         services.AddSingleton<IAggregationService, AggregationService>();

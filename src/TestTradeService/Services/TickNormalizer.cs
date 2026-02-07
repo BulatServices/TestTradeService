@@ -3,14 +3,14 @@ using TestTradeService.Models;
 namespace TestTradeService.Services;
 
 /// <summary>
-/// Приводит входные тики к единому внутреннему формату.
+/// Приводит формализованные входные тики к единому внутреннему формату.
 /// </summary>
 public sealed class TickNormalizer
 {
     /// <summary>
-    /// Нормализует сырой тик и формирует fingerprint для дедупликации.
+    /// Нормализует тик, полученный после парсинга raw payload, и формирует fingerprint для дедупликации.
     /// </summary>
-    /// <param name="tick">Входной сырой тик.</param>
+    /// <param name="tick">Формализованный тик, полученный из raw payload.</param>
     /// <returns>Нормализованный тик.</returns>
     public NormalizedTick Normalize(Tick tick)
     {

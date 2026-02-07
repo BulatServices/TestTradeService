@@ -1,6 +1,7 @@
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using TestTradeService.Interfaces;
+using TestTradeService.Ingestion.Configuration;
 using TestTradeService.Models;
 
 namespace TestTradeService.Services;
@@ -11,13 +12,17 @@ namespace TestTradeService.Services;
 public sealed class WebSocketSource : IMarketDataSource
 {
     private readonly ILogger<WebSocketSource> _logger;
+    private readonly MarketInstrumentsConfig _instrumentsConfig;
 
     /// <summary>
     /// Инициализирует источник WebSocket.
     /// </summary>
-    public WebSocketSource(ILogger<WebSocketSource> logger)
+    /// <param name="logger">Логгер источника.</param>
+    /// <param name="instrumentsConfig">Конфигурация инструментов.</param>
+    public WebSocketSource(ILogger<WebSocketSource> logger, MarketInstrumentsConfig instrumentsConfig)
     {
         _logger = logger;
+        _instrumentsConfig = instrumentsConfig;
     }
 
     /// <summary>
@@ -28,9 +33,21 @@ public sealed class WebSocketSource : IMarketDataSource
     /// <summary>
     /// Запускает потоковую публикацию тиков в канал.
     /// </summary>
+    /// <param name="writer">Канал для публикации тиков.</param>
+    /// <param name="cancellationToken">Токен отмены.</param>
+    /// <returns>Задача выполнения потоковой публикации.</returns>
     public async Task StartAsync(ChannelWriter<Tick> writer, CancellationToken cancellationToken)
     {
-        var symbols = new[] { "BTC-USD", "ETH-USD", "XRP-USD" };
+        var profile = _instrumentsConfig.GetProfile(MarketType.Perp);
+        if (profile is null)
+        {
+            _logger.LogWarning("Не настроены инструменты для рынка perp. WebSocket-поток остановлен.");
+            writer.TryComplete();
+            return;
+        }
+
+        var symbols = profile.Symbols.ToArray();
+        var tickInterval = profile.TargetUpdateInterval;
         var random = Random.Shared;
 
         _logger.LogInformation("WebSocket source started");
@@ -50,7 +67,7 @@ public sealed class WebSocketSource : IMarketDataSource
             };
 
             await writer.WriteAsync(tick, cancellationToken);
-            await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
+            await Task.Delay(tickInterval, cancellationToken);
         }
 
         writer.TryComplete();

@@ -1,6 +1,7 @@
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using TestTradeService.Interfaces;
+using TestTradeService.Ingestion.Configuration;
 using TestTradeService.Models;
 
 namespace TestTradeService.Services;
@@ -11,7 +12,7 @@ namespace TestTradeService.Services;
 public sealed class DataPipeline
 {
     private readonly TickNormalizer _normalizer = new();
-    private readonly TickFilter _filter = new(new[] { "BTC-USD", "ETH-USD", "SOL-USD", "XRP-USD" });
+    private readonly TickFilter _filter;
     private readonly TickDeduplicator _deduplicator = new();
     private readonly IAggregationService _aggregationService;
     private readonly IStorage _storage;
@@ -22,23 +23,34 @@ public sealed class DataPipeline
     /// <summary>
     /// Инициализирует конвейер обработки тиков.
     /// </summary>
+    /// <param name="aggregationService">Сервис агрегации тиков.</param>
+    /// <param name="storage">Хранилище данных.</param>
+    /// <param name="alerting">Сервис оповещений.</param>
+    /// <param name="monitoring">Сервис мониторинга.</param>
+    /// <param name="instrumentsConfig">Конфигурация инструментов.</param>
+    /// <param name="logger">Логгер конвейера.</param>
     public DataPipeline(
         IAggregationService aggregationService,
         IStorage storage,
         AlertingService alerting,
         IMonitoringService monitoring,
+        MarketInstrumentsConfig instrumentsConfig,
         ILogger<DataPipeline> logger)
     {
         _aggregationService = aggregationService;
         _storage = storage;
         _alerting = alerting;
         _monitoring = monitoring;
+        _filter = new TickFilter(instrumentsConfig.GetAllSymbols());
         _logger = logger;
     }
 
     /// <summary>
     /// Запускает чтение тиков из канала и их последовательную обработку.
     /// </summary>
+    /// <param name="reader">Канал для чтения тиков.</param>
+    /// <param name="cancellationToken">Токен отмены.</param>
+    /// <returns>Задача выполнения конвейера.</returns>
     public async Task StartAsync(ChannelReader<Tick> reader, CancellationToken cancellationToken)
     {
         await foreach (var tick in reader.ReadAllAsync(cancellationToken))
