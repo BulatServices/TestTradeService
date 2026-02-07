@@ -11,6 +11,11 @@ public sealed record MonitoringSnapshot
     public required DateTimeOffset Timestamp { get; init; }
 
     /// <summary>
+    /// Статистика по биржам.
+    /// </summary>
+    public required IReadOnlyDictionary<MarketExchange, ExchangeStats> ExchangeStats { get; init; }
+
+    /// <summary>
     /// Статистика по источникам.
     /// </summary>
     public required IReadOnlyDictionary<string, SourceStats> SourceStats { get; init; }
@@ -19,6 +24,40 @@ public sealed record MonitoringSnapshot
     /// Список предупреждений.
     /// </summary>
     public required IReadOnlyList<string> Warnings { get; init; }
+}
+
+/// <summary>
+/// Статистика производительности по одному источнику.
+/// </summary>
+/// <summary>
+/// Статистика производительности в разрезе одной биржи.
+/// </summary>
+public sealed record ExchangeStats
+{
+    /// <summary>
+    /// Биржа (торговая площадка).
+    /// </summary>
+    public required MarketExchange Exchange { get; init; }
+
+    /// <summary>
+    /// Количество обработанных тиков.
+    /// </summary>
+    public required long TickCount { get; init; }
+
+    /// <summary>
+    /// Количество сформированных агрегатов.
+    /// </summary>
+    public required long AggregateCount { get; init; }
+
+    /// <summary>
+    /// Средняя задержка обработки в миллисекундах.
+    /// </summary>
+    public required double AverageDelayMs { get; init; }
+
+    /// <summary>
+    /// Время последнего полученного тика.
+    /// </summary>
+    public required DateTimeOffset LastTickTime { get; init; }
 }
 
 /// <summary>

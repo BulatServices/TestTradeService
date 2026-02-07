@@ -267,7 +267,7 @@ public abstract class RestPollingSource : IMarketDataSource
                 {
                     var normalized = tick with
                     {
-                        Source = Exchange.ToString()
+                        Source = Name
                     };
 
                     if (!_tradeCursorStore.ShouldEmit(Exchange, normalized.Symbol, normalized.Timestamp, normalized.TradeId, normalized.Price, normalized.Volume))

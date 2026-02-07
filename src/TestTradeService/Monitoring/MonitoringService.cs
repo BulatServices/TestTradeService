@@ -11,6 +11,7 @@ namespace TestTradeService.Monitoring;
 public sealed class MonitoringService : IMonitoringService
 {
     private readonly ConcurrentDictionary<string, SourceMetrics> _metrics = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<MarketExchange, ExchangeMetrics> _exchangeMetrics = new();
     private readonly ConcurrentBag<string> _warnings = new();
     private readonly MonitoringSlaConfig _slaConfig;
 
@@ -32,6 +33,10 @@ public sealed class MonitoringService : IMonitoringService
     {
         var metrics = _metrics.GetOrAdd(sourceName, _ => new SourceMetrics(sourceName));
         metrics.RecordTick(tick);
+
+        var exchange = GetExchange(sourceName);
+        var exchangeMetrics = _exchangeMetrics.GetOrAdd(exchange, e => new ExchangeMetrics(e));
+        exchangeMetrics.RecordTick(tick);
     }
 
     /// <summary>
@@ -43,6 +48,10 @@ public sealed class MonitoringService : IMonitoringService
     {
         var metrics = _metrics.GetOrAdd(sourceName, _ => new SourceMetrics(sourceName));
         metrics.RecordAggregate();
+
+        var exchange = GetExchange(sourceName);
+        var exchangeMetrics = _exchangeMetrics.GetOrAdd(exchange, e => new ExchangeMetrics(e));
+        exchangeMetrics.RecordAggregate();
     }
 
     /// <summary>
@@ -55,9 +64,13 @@ public sealed class MonitoringService : IMonitoringService
         var metrics = _metrics.GetOrAdd(sourceName, _ => new SourceMetrics(sourceName));
         metrics.RecordDelay(delay);
 
+        var exchange = GetExchange(sourceName);
+        var exchangeMetrics = _exchangeMetrics.GetOrAdd(exchange, e => new ExchangeMetrics(e));
+        exchangeMetrics.RecordDelay(delay);
+
         if (delay > _slaConfig.MaxTickDelay)
         {
-            _warnings.Add($"Delay warning for {sourceName}: {delay.TotalMilliseconds:F0} ms");
+            _warnings.Add($"Delay warning for {sourceName} ({exchange}): {delay.TotalMilliseconds:F0} ms");
         }
     }
 
@@ -67,6 +80,10 @@ public sealed class MonitoringService : IMonitoringService
     /// <returns>Снимок мониторинга.</returns>
     public MonitoringSnapshot Snapshot()
     {
+        var exchangeSnapshot = _exchangeMetrics.Values
+            .Select(m => m.ToStats())
+            .ToDictionary(stat => stat.Exchange, stat => stat);
+
         var snapshot = _metrics.Values
             .Select(m => m.ToStats())
             .ToDictionary(stat => stat.Source, stat => stat);
@@ -74,9 +91,20 @@ public sealed class MonitoringService : IMonitoringService
         return new MonitoringSnapshot
         {
             Timestamp = DateTimeOffset.UtcNow,
+            ExchangeStats = exchangeSnapshot,
             SourceStats = snapshot,
             Warnings = _warnings.ToList()
         };
+    }
+
+    private static MarketExchange GetExchange(string sourceName)
+    {
+        if (string.IsNullOrWhiteSpace(sourceName))
+            return MarketExchange.Unknown;
+
+        var delimiterIndex = sourceName.IndexOf('-', StringComparison.Ordinal);
+        var head = delimiterIndex > 0 ? sourceName[..delimiterIndex] : sourceName;
+        return Enum.TryParse<MarketExchange>(head, true, out var exchange) ? exchange : MarketExchange.Unknown;
     }
 
     private sealed class SourceMetrics
@@ -144,6 +172,60 @@ public sealed class MonitoringService : IMonitoringService
             return new SourceStats
             {
                 Source = _source,
+                TickCount = _tickCount,
+                AggregateCount = _aggregateCount,
+                AverageDelayMs = averageDelay,
+                LastTickTime = _lastTickTime
+            };
+        }
+    }
+
+    private sealed class ExchangeMetrics
+    {
+        private readonly MarketExchange _exchange;
+        private long _tickCount;
+        private long _aggregateCount;
+        private readonly object _delayLock = new();
+        private double _delaySum;
+        private long _delaySamples;
+        private DateTimeOffset _lastTickTime;
+
+        public ExchangeMetrics(MarketExchange exchange)
+        {
+            _exchange = exchange;
+        }
+
+        public void RecordTick(NormalizedTick tick)
+        {
+            Interlocked.Increment(ref _tickCount);
+            _lastTickTime = tick.Timestamp;
+        }
+
+        public void RecordAggregate()
+        {
+            Interlocked.Increment(ref _aggregateCount);
+        }
+
+        public void RecordDelay(TimeSpan delay)
+        {
+            lock (_delayLock)
+            {
+                _delaySamples++;
+                _delaySum += delay.TotalMilliseconds;
+            }
+        }
+
+        public ExchangeStats ToStats()
+        {
+            double averageDelay;
+            lock (_delayLock)
+            {
+                averageDelay = _delaySamples == 0 ? 0 : _delaySum / _delaySamples;
+            }
+
+            return new ExchangeStats
+            {
+                Exchange = _exchange,
                 TickCount = _tickCount,
                 AggregateCount = _aggregateCount,
                 AverageDelayMs = averageDelay,

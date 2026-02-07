@@ -8,9 +8,6 @@ using TestTradeService.Models;
 using TestTradeService.Monitoring;
 using TestTradeService.Monitoring.Configuration;
 using TestTradeService.Services;
-using TestTradeService.Services.Exchanges.Bybit;
-using TestTradeService.Services.Exchanges.Coinbase;
-using TestTradeService.Services.Exchanges.Kraken;
 using TestTradeService.Storage;
 
 var demoMode = string.Equals(Environment.GetEnvironmentVariable("DEMO_MODE"), "true", StringComparison.OrdinalIgnoreCase);
@@ -83,20 +80,7 @@ var host = Host.CreateDefaultBuilder(args)
         services.AddSingleton<DataPipeline>();
         services.AddSingleton<TradeCursorStore>();
 
-        if (demoMode)
-        {
-            services.AddSingleton<IMarketDataSource, DemoRestPollingSource>();
-            services.AddSingleton<IMarketDataSource, DemoWebSocketSource>();
-        }
-        else
-        {
-            services.AddSingleton<IMarketDataSource, KrakenTradesWebSocketSource>();
-            services.AddSingleton<IMarketDataSource, KrakenTradesRestPollingSource>();
-            services.AddSingleton<IMarketDataSource, CoinbaseMatchesWebSocketSource>();
-            services.AddSingleton<IMarketDataSource, CoinbaseTradesRestPollingSource>();
-            services.AddSingleton<IMarketDataSource, BybitPublicTradesWebSocketSource>();
-            services.AddSingleton<IMarketDataSource, BybitTradesRestPollingSource>();
-        }
+        RegisterMarketDataSources(services, demoMode);
         services.AddIngestionSubsystem();
         services.AddHostedService<TradingSystemWorker>();
     })
@@ -108,3 +92,27 @@ var host = Host.CreateDefaultBuilder(args)
     .Build();
 
 await host.RunAsync();
+
+static void RegisterMarketDataSources(IServiceCollection services, bool demoMode)
+{
+    var sourcesAssembly = typeof(IMarketDataSource).Assembly;
+
+    static bool ImplementsMarketDataSource(Type type) =>
+        type is { IsAbstract: false, IsInterface: false }
+        && typeof(IMarketDataSource).IsAssignableFrom(type);
+
+    static bool IsDemoSourceNamespace(string? ns) =>
+        string.Equals(ns, "TestTradeService.Services", StringComparison.Ordinal);
+
+    static bool IsExchangeSourceNamespace(string? ns) =>
+        ns?.StartsWith("TestTradeService.Services.Exchanges.", StringComparison.Ordinal) == true;
+
+    var sourceTypes = sourcesAssembly
+        .GetTypes()
+        .Where(ImplementsMarketDataSource)
+        .Where(t => demoMode ? IsDemoSourceNamespace(t.Namespace) : IsExchangeSourceNamespace(t.Namespace))
+        .OrderBy(t => t.FullName, StringComparer.Ordinal);
+
+    foreach (var sourceType in sourceTypes)
+        services.AddSingleton(typeof(IMarketDataSource), sourceType);
+}

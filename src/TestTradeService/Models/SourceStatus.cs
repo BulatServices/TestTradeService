@@ -6,6 +6,11 @@ namespace TestTradeService.Models;
 public sealed record SourceStatus
 {
     /// <summary>
+    /// Биржа (торговая площадка), к которой относится источник.
+    /// </summary>
+    public required MarketExchange Exchange { get; init; }
+
+    /// <summary>
     /// Имя источника.
     /// </summary>
     public required string Source { get; init; }

@@ -12,7 +12,7 @@ namespace TestTradeService.Services;
 public sealed class TradingSystemWorker : BackgroundService
 {
     private readonly ChannelFactory _channelFactory;
-    private readonly IEnumerable<IMarketDataSource> _sources;
+    private readonly IReadOnlyList<IMarketDataSource> _sources;
     private readonly DataPipeline _pipeline;
     private readonly IStorage _storage;
     private readonly IMonitoringService _monitoring;
@@ -30,11 +30,18 @@ public sealed class TradingSystemWorker : BackgroundService
         ILogger<TradingSystemWorker> logger)
     {
         _channelFactory = channelFactory;
-        _sources = sources;
         _pipeline = pipeline;
         _storage = storage;
         _monitoring = monitoring;
         _logger = logger;
+
+        _sources = sources
+            .OrderBy(s => s.Exchange)
+            .ThenBy(s => s.Transport)
+            .ThenBy(s => s.Name, StringComparer.Ordinal)
+            .ToList();
+
+        _logger.LogInformation("Market data sources: {Sources}", string.Join(", ", _sources.Select(s => s.Name)));
     }
 
     /// <summary>
@@ -83,6 +90,7 @@ public sealed class TradingSystemWorker : BackgroundService
         {
             await _storage.StoreSourceStatusAsync(new SourceStatus
             {
+                Exchange = source.Exchange,
                 Source = source.Name,
                 IsOnline = true,
                 LastUpdate = DateTimeOffset.UtcNow,
@@ -99,6 +107,7 @@ public sealed class TradingSystemWorker : BackgroundService
             _logger.LogError(ex, "Source {Source} crashed", source.Name);
             await _storage.StoreSourceStatusAsync(new SourceStatus
             {
+                Exchange = source.Exchange,
                 Source = source.Name,
                 IsOnline = false,
                 LastUpdate = DateTimeOffset.UtcNow,
@@ -112,6 +121,16 @@ public sealed class TradingSystemWorker : BackgroundService
         while (!cancellationToken.IsCancellationRequested)
         {
             var snapshot = _monitoring.Snapshot();
+            foreach (var stats in snapshot.ExchangeStats.Values.OrderBy(s => s.Exchange))
+            {
+                _logger.LogInformation(
+                    "Exchange {Exchange} ticks={Ticks} aggregates={Agg} avgDelayMs={Delay:F0}",
+                    stats.Exchange,
+                    stats.TickCount,
+                    stats.AggregateCount,
+                    stats.AverageDelayMs);
+            }
+
             foreach (var stats in snapshot.SourceStats.Values)
             {
                 _logger.LogInformation(
