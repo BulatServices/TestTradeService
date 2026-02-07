@@ -47,7 +47,13 @@ public sealed class TradingSystemWorker : BackgroundService
         var pipelineTask = _pipeline.StartAsync(channel.Reader, stoppingToken);
         var monitoringTask = ReportMonitoringAsync(stoppingToken);
 
-        await Task.WhenAll(sourceTasks.Append(pipelineTask).Append(monitoringTask));
+        try
+        {
+            await Task.WhenAll(sourceTasks.Append(pipelineTask).Append(monitoringTask));
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+        }
     }
 
     /// <summary>

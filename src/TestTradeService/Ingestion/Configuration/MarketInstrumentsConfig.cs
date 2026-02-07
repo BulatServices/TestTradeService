@@ -8,6 +8,11 @@ namespace TestTradeService.Ingestion.Configuration;
 public sealed class MarketInstrumentProfile
 {
     /// <summary>
+    /// Биржа, к которой относится набор инструментов.
+    /// </summary>
+    public required MarketExchange Exchange { get; init; }
+
+    /// <summary>
     /// Тип рынка, к которому относится набор.
     /// </summary>
     public required MarketType MarketType { get; init; }
@@ -48,10 +53,11 @@ public sealed class MarketInstrumentsConfig
     /// <summary>
     /// Возвращает профиль инструментов по типу рынка.
     /// </summary>
+    /// <param name="exchange">Биржа.</param>
     /// <param name="marketType">Тип рынка.</param>
     /// <returns>Профиль инструментов или <c>null</c>, если профиль отсутствует.</returns>
-    public MarketInstrumentProfile? GetProfile(MarketType marketType)
+    public MarketInstrumentProfile? GetProfile(MarketExchange exchange, MarketType marketType)
     {
-        return Profiles.FirstOrDefault(profile => profile.MarketType == marketType);
+        return Profiles.FirstOrDefault(profile => profile.Exchange == exchange && profile.MarketType == marketType);
     }
 }

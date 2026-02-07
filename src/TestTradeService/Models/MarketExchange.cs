@@ -13,6 +13,20 @@ public enum MarketExchange
     /// <summary>
     /// Демонстрационная/тестовая площадка (данные генерируются внутри сервиса).
     /// </summary>
-    Demo = 1
-}
+    Demo = 1,
 
+    /// <summary>
+    /// Биржа Kraken.
+    /// </summary>
+    Kraken = 2,
+
+    /// <summary>
+    /// Биржа Coinbase (public Exchange API).
+    /// </summary>
+    Coinbase = 3,
+
+    /// <summary>
+    /// Биржа Bybit.
+    /// </summary>
+    Bybit = 4
+}

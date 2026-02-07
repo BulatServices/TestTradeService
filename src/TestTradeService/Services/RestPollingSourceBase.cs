@@ -7,135 +7,9 @@ using TestTradeService.Models;
 namespace TestTradeService.Services;
 
 /// <summary>
-/// Источник рыночных данных через периодический REST polling.
-/// </summary>
-public sealed class DemoRestPollingSource : IMarketDataSource
-{
-    private readonly ILogger<DemoRestPollingSource> _logger;
-    private readonly MarketInstrumentsConfig _instrumentsConfig;
-    private readonly IStorage _storage;
-
-    /// <summary>
-    /// Инициализирует источник REST polling.
-    /// </summary>
-    /// <param name="logger">Логгер источника.</param>
-    /// <param name="instrumentsConfig">Конфигурация инструментов.</param>
-    /// <param name="storage">Слой хранения.</param>
-    public DemoRestPollingSource(ILogger<DemoRestPollingSource> logger, MarketInstrumentsConfig instrumentsConfig, IStorage storage)
-    {
-        _logger = logger;
-        _instrumentsConfig = instrumentsConfig;
-        _storage = storage;
-    }
-
-    /// <summary>
-    /// Имя источника.
-    /// </summary>
-    public string Name => "Demo-RestApi";
-
-    /// <summary>
-    /// Биржа (торговая площадка), к которой относится источник.
-    /// </summary>
-    public MarketExchange Exchange => MarketExchange.Demo;
-
-    /// <summary>
-    /// Транспорт/тип подключения источника.
-    /// </summary>
-    public MarketDataSourceTransport Transport => MarketDataSourceTransport.Rest;
-
-    /// <summary>
-    /// Запускает генерацию/чтение тиков и отправляет их в канал.
-    /// </summary>
-    /// <param name="writer">Канал для публикации тиков.</param>
-    /// <param name="cancellationToken">Токен отмены.</param>
-    /// <returns>Задача выполнения цикла polling.</returns>
-    public async Task StartAsync(ChannelWriter<Tick> writer, CancellationToken cancellationToken)
-    {
-        var profile = _instrumentsConfig.GetProfile(MarketExchange.Demo, MarketType.Spot);
-        if (profile is null)
-        {
-            _logger.LogWarning("Не настроены инструменты для рынка spot. REST polling остановлен.");
-            return;
-        }
-
-        var symbols = profile.Symbols;
-        var pollInterval = profile.TargetUpdateInterval;
-        var random = Random.Shared;
-
-        await StoreInstrumentMetadataAsync(profile, cancellationToken);
-
-        _logger.LogInformation("REST polling source started");
-
-        while (!cancellationToken.IsCancellationRequested)
-        {
-            var now = DateTimeOffset.UtcNow;
-            foreach (var symbol in symbols)
-            {
-                var tick = new Tick
-                {
-                    Source = Name,
-                    Symbol = symbol,
-                    Price = 20_000m + (decimal)random.NextDouble() * 2_000m,
-                    Volume = 0.1m + (decimal)random.NextDouble() * 5m,
-                    Timestamp = now,
-                    TradeId = $"rest-{now:O}-{random.Next(1_000_000)}"
-                };
-
-                await writer.WriteAsync(tick, cancellationToken);
-            }
-
-            await Task.Delay(pollInterval, cancellationToken);
-        }
-
-    }
-
-    /// <summary>
-    /// Запрашивает корректную остановку источника.
-    /// Для polling-реализации основным механизмом остановки является отмена токена в <see cref="StartAsync"/>.
-    /// </summary>
-    /// <param name="cancellationToken">Токен отмены.</param>
-    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
-
-    private async Task StoreInstrumentMetadataAsync(MarketInstrumentProfile profile, CancellationToken cancellationToken)
-    {
-        foreach (var symbol in profile.Symbols)
-        {
-            var (baseAsset, quoteAsset) = ParseSymbol(symbol);
-            await _storage.StoreInstrumentAsync(new InstrumentMetadata
-            {
-                Exchange = Exchange.ToString(),
-                MarketType = profile.MarketType,
-                Symbol = symbol,
-                BaseAsset = baseAsset,
-                QuoteAsset = quoteAsset,
-                Description = $"{symbol} ({profile.MarketType})",
-                PriceTickSize = 0.01m,
-                VolumeStep = 0.0001m,
-                PriceDecimals = 2,
-                VolumeDecimals = 4,
-                ContractSize = null,
-                MinNotional = 10m
-            }, cancellationToken);
-        }
-    }
-
-    private static (string BaseAsset, string QuoteAsset) ParseSymbol(string symbol)
-    {
-        var parts = symbol
-            .Split(new[] { '-', '/', '_' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-
-        return parts.Length switch
-        {
-            2 => (parts[0], parts[1]),
-            _ => (symbol, "UNKNOWN")
-        };
-    }
-}
-
-/// <summary>
 /// Базовый источник рыночных данных через периодический REST polling сделок.
 /// </summary>
-public abstract class RestPollingSource : IMarketDataSource
+public abstract class RestPollingSourceObsolete : IMarketDataSource
 {
     private readonly ILogger _logger;
     private readonly MarketInstrumentsConfig _instrumentsConfig;
@@ -150,7 +24,7 @@ public abstract class RestPollingSource : IMarketDataSource
     /// <param name="storage">Слой хранения.</param>
     /// <param name="tradeCursorStore">Курсор сделок для дедупликации.</param>
     /// <param name="exchange">Биржа, к которой относится источник.</param>
-    protected RestPollingSource(
+    protected RestPollingSourceObsolete(
         ILogger logger,
         MarketInstrumentsConfig instrumentsConfig,
         IStorage storage,
