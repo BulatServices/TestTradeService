@@ -254,6 +254,16 @@ public sealed class DataPipelineTests
             StoredAlerts.Add(alert);
             return Task.CompletedTask;
         }
+
+        public Task<IReadOnlyCollection<InstrumentMetadata>> GetInstrumentsAsync(CancellationToken cancellationToken)
+        {
+            return Task.FromResult((IReadOnlyCollection<InstrumentMetadata>)Array.Empty<InstrumentMetadata>());
+        }
+
+        public Task<IReadOnlyCollection<AlertRuleConfig>> GetAlertRulesAsync(CancellationToken cancellationToken)
+        {
+            return Task.FromResult((IReadOnlyCollection<AlertRuleConfig>)Array.Empty<AlertRuleConfig>());
+        }
     }
 
     private sealed class AlwaysMatchRule : IAlertRule

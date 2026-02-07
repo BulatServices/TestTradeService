@@ -1,5 +1,6 @@
 using TestTradeService.Models;
 using TestTradeService.Services;
+using TestTradeService.Storage;
 using Xunit;
 
 namespace TestTradeService.Tests;
@@ -19,7 +20,7 @@ public sealed class PriceThresholdRuleTests
     [InlineData(22_001, true)]
     public void IsMatch_WhenPriceOutsideRange_ReturnsExpected(decimal price, bool expected)
     {
-        var rule = new PriceThresholdRule();
+        var rule = new PriceThresholdRule(new AlertRuleConfigProvider(DefaultConfigurationFactory.CreateAlertRules()));
         var tick = CreateTick(price);
         var metrics = CreateMetrics();
 
@@ -34,7 +35,7 @@ public sealed class PriceThresholdRuleTests
     [Fact]
     public void CreateAlert_SetsExpectedFields()
     {
-        var rule = new PriceThresholdRule();
+        var rule = new PriceThresholdRule(new AlertRuleConfigProvider(DefaultConfigurationFactory.CreateAlertRules()));
         var tick = CreateTick(23_000m);
         var metrics = CreateMetrics();
 

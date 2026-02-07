@@ -3,32 +3,61 @@ using TestTradeService.Models;
 namespace TestTradeService.Interfaces;
 
 /// <summary>
-/// РђР±СЃС‚СЂР°РєС†РёСЏ СЃР»РѕСЏ С…СЂР°РЅРµРЅРёСЏ РґР°РЅРЅС‹С… С‚РѕСЂРіРѕРІРѕР№ СЃРёСЃС‚РµРјС‹.
+/// Абстракция слоя хранения данных торговой системы.
 /// </summary>
 public interface IStorage
 {
     /// <summary>
-    /// РЎРѕС…СЂР°РЅСЏРµС‚ raw-С‚РёРє РІ С…СЂР°РЅРёР»РёС‰Рµ.
+    /// Сохраняет raw-тик в хранилище.
     /// </summary>
+    /// <param name="tick">Нормализованный тик.</param>
+    /// <param name="cancellationToken">Токен отмены.</param>
+    /// <returns>Задача сохранения тика.</returns>
     Task StoreTickAsync(NormalizedTick tick, CancellationToken cancellationToken);
 
     /// <summary>
-    /// РЎРѕС…СЂР°РЅСЏРµС‚ Р°РіСЂРµРіРёСЂРѕРІР°РЅРЅСѓСЋ СЃРІРµС‡Сѓ.
+    /// Сохраняет агрегированную свечу.
     /// </summary>
+    /// <param name="candle">Агрегированная свеча.</param>
+    /// <param name="cancellationToken">Токен отмены.</param>
+    /// <returns>Задача сохранения свечи.</returns>
     Task StoreAggregateAsync(AggregatedCandle candle, CancellationToken cancellationToken);
 
     /// <summary>
-    /// РЎРѕС…СЂР°РЅСЏРµС‚ РјРµС‚Р°РґР°РЅРЅС‹Рµ РёРЅСЃС‚СЂСѓРјРµРЅС‚Р°.
+    /// Сохраняет метаданные инструмента.
     /// </summary>
+    /// <param name="metadata">Метаданные инструмента.</param>
+    /// <param name="cancellationToken">Токен отмены.</param>
+    /// <returns>Задача сохранения метаданных инструмента.</returns>
     Task StoreInstrumentAsync(InstrumentMetadata metadata, CancellationToken cancellationToken);
 
     /// <summary>
-    /// РЎРѕС…СЂР°РЅСЏРµС‚ СЃС‚Р°С‚СѓСЃ РёСЃС‚РѕС‡РЅРёРєР° РґР°РЅРЅС‹С….
+    /// Сохраняет статус источника данных.
     /// </summary>
+    /// <param name="status">Статус источника данных.</param>
+    /// <param name="cancellationToken">Токен отмены.</param>
+    /// <returns>Задача сохранения статуса источника.</returns>
     Task StoreSourceStatusAsync(SourceStatus status, CancellationToken cancellationToken);
 
     /// <summary>
-    /// РЎРѕС…СЂР°РЅСЏРµС‚ Р°Р»РµСЂС‚.
+    /// Сохраняет алерт.
     /// </summary>
+    /// <param name="alert">Событие алертинга.</param>
+    /// <param name="cancellationToken">Токен отмены.</param>
+    /// <returns>Задача сохранения алерта.</returns>
     Task StoreAlertAsync(Alert alert, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Загружает метаданные активных инструментов.
+    /// </summary>
+    /// <param name="cancellationToken">Токен отмены.</param>
+    /// <returns>Набор метаданных инструментов.</returns>
+    Task<IReadOnlyCollection<InstrumentMetadata>> GetInstrumentsAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Загружает конфигурации правил алертинга.
+    /// </summary>
+    /// <param name="cancellationToken">Токен отмены.</param>
+    /// <returns>Набор конфигураций правил.</returns>
+    Task<IReadOnlyCollection<AlertRuleConfig>> GetAlertRulesAsync(CancellationToken cancellationToken);
 }

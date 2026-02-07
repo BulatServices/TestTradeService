@@ -194,5 +194,15 @@ public sealed class AlertingServiceTests
             _alerts.Add(alert);
             return Task.CompletedTask;
         }
+
+        public Task<IReadOnlyCollection<InstrumentMetadata>> GetInstrumentsAsync(CancellationToken cancellationToken)
+        {
+            return Task.FromResult((IReadOnlyCollection<InstrumentMetadata>)Array.Empty<InstrumentMetadata>());
+        }
+
+        public Task<IReadOnlyCollection<AlertRuleConfig>> GetAlertRulesAsync(CancellationToken cancellationToken)
+        {
+            return Task.FromResult((IReadOnlyCollection<AlertRuleConfig>)Array.Empty<AlertRuleConfig>());
+        }
     }
 }

@@ -1,29 +1,53 @@
+using System.Globalization;
 using TestTradeService.Interfaces;
 using TestTradeService.Models;
 
 namespace TestTradeService.Services;
 
 /// <summary>
-/// РџСЂР°РІРёР»Рѕ Р°Р»РµСЂС‚РёРЅРіР° РїРѕ РІС‹С…РѕРґСѓ С†РµРЅС‹ Р·Р° Р·Р°РґР°РЅРЅС‹Рµ РїРѕСЂРѕРіРё.
+/// Правило алертинга по выходу цены за заданные пороги.
 /// </summary>
 public sealed class PriceThresholdRule : IAlertRule
 {
+    private const decimal DefaultMinPrice = 18_000m;
+    private const decimal DefaultMaxPrice = 22_000m;
+    private readonly IAlertRuleConfigProvider _configProvider;
+
     /// <summary>
-    /// РРјСЏ РїСЂР°РІРёР»Р°.
+    /// Инициализирует правило контроля ценовых порогов.
+    /// </summary>
+    /// <param name="configProvider">Провайдер параметров правил алертинга.</param>
+    public PriceThresholdRule(IAlertRuleConfigProvider configProvider)
+    {
+        _configProvider = configProvider;
+    }
+
+    /// <summary>
+    /// Имя правила.
     /// </summary>
     public string Name => "PriceThreshold";
 
     /// <summary>
-    /// РџСЂРѕРІРµСЂСЏРµС‚ РїСЂРµРІС‹С€РµРЅРёРµ/РїРѕРЅРёР¶РµРЅРёРµ С†РµРЅС‹ РѕС‚РЅРѕСЃРёС‚РµР»СЊРЅРѕ РїРѕСЂРѕРіРѕРІ.
+    /// Проверяет превышение/понижение цены относительно порогов.
     /// </summary>
+    /// <param name="tick">Нормализованный тик.</param>
+    /// <param name="metrics">Рассчитанные метрики по инструменту.</param>
+    /// <returns><c>true</c>, если цена вышла за допустимый диапазон.</returns>
     public bool IsMatch(NormalizedTick tick, MetricsSnapshot metrics)
     {
-        return tick.Price > 22_000m || tick.Price < 18_000m;
+        var parameters = _configProvider.GetParameters(Name, tick.Source, tick.Symbol);
+        var minPrice = GetDecimal(parameters, "min_price", DefaultMinPrice);
+        var maxPrice = GetDecimal(parameters, "max_price", DefaultMaxPrice);
+
+        return tick.Price > maxPrice || tick.Price < minPrice;
     }
 
     /// <summary>
-    /// РЎРѕР·РґР°РµС‚ Р°Р»РµСЂС‚ РїРѕ С„Р°РєС‚Сѓ СЃСЂР°Р±Р°С‚С‹РІР°РЅРёСЏ РїСЂР°РІРёР»Р°.
+    /// Создает алерт по факту срабатывания правила.
     /// </summary>
+    /// <param name="tick">Нормализованный тик.</param>
+    /// <param name="metrics">Рассчитанные метрики.</param>
+    /// <returns>Сформированный алерт.</returns>
     public Alert CreateAlert(NormalizedTick tick, MetricsSnapshot metrics)
     {
         return new Alert
@@ -34,5 +58,15 @@ public sealed class PriceThresholdRule : IAlertRule
             Message = $"Price threshold breached: {tick.Price}",
             Timestamp = tick.Timestamp
         };
+    }
+
+    private static decimal GetDecimal(IReadOnlyDictionary<string, string> parameters, string key, decimal fallback)
+    {
+        if (!parameters.TryGetValue(key, out var value))
+            return fallback;
+
+        return decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed)
+            ? parsed
+            : fallback;
     }
 }

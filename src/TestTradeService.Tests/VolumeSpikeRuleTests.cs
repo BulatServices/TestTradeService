@@ -1,5 +1,6 @@
 using TestTradeService.Models;
 using TestTradeService.Services;
+using TestTradeService.Storage;
 using Xunit;
 
 namespace TestTradeService.Tests;
@@ -19,7 +20,7 @@ public sealed class VolumeSpikeRuleTests
     [InlineData(3.5, 7, false)]
     public void IsMatch_WhenVolumeAndCountMeetThresholds_ReturnsExpected(decimal volume, int count, bool expected)
     {
-        var rule = new VolumeSpikeRule();
+        var rule = new VolumeSpikeRule(new AlertRuleConfigProvider(DefaultConfigurationFactory.CreateAlertRules()));
         var tick = CreateTick(volume);
         var metrics = CreateMetrics(count);
 
@@ -34,7 +35,7 @@ public sealed class VolumeSpikeRuleTests
     [Fact]
     public void CreateAlert_SetsExpectedFields()
     {
-        var rule = new VolumeSpikeRule();
+        var rule = new VolumeSpikeRule(new AlertRuleConfigProvider(DefaultConfigurationFactory.CreateAlertRules()));
         var tick = CreateTick(5m);
         var metrics = CreateMetrics(10);
 

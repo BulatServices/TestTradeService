@@ -1,6 +1,9 @@
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using Npgsql;
 using TestTradeService.Interfaces;
 using TestTradeService.Ingestion.Configuration;
 using TestTradeService.Ingestion.Management;
@@ -9,66 +12,77 @@ using TestTradeService.Monitoring;
 using TestTradeService.Monitoring.Configuration;
 using TestTradeService.Services;
 using TestTradeService.Storage;
+using TestTradeService.Storage.Configuration;
 
 var demoMode = string.Equals(Environment.GetEnvironmentVariable("DEMO_MODE"), "true", StringComparison.OrdinalIgnoreCase);
+
+var bootstrapConfiguration = new ConfigurationBuilder()
+    .SetBasePath(Directory.GetCurrentDirectory())
+    .AddJsonFile("appsettings.json", optional: true)
+    .AddEnvironmentVariables()
+    .Build();
+
+var databaseOptions = bootstrapConfiguration.GetSection(DatabaseOptions.SectionName).Get<DatabaseOptions>() ?? new DatabaseOptions();
+var databaseEnabled = databaseOptions.HasBothConnections();
+
+var instrumentsConfig = DefaultConfigurationFactory.CreateInstruments(demoMode);
+var alertRuleConfigs = DefaultConfigurationFactory.CreateAlertRules();
+MetadataDataSource? metadataDataSource = null;
+TimeseriesDataSource? timeseriesDataSource = null;
+
+if (databaseEnabled)
+{
+    metadataDataSource = new MetadataDataSource(NpgsqlDataSource.Create(databaseOptions.MetadataConnectionString));
+    timeseriesDataSource = new TimeseriesDataSource(NpgsqlDataSource.Create(databaseOptions.TimeseriesConnectionString));
+
+    if (databaseOptions.AutoMigrate)
+    {
+        var runner = new SqlMigrationRunner(metadataDataSource, timeseriesDataSource);
+        await runner.RunAsync(CancellationToken.None);
+    }
+
+    var repository = new PostgresConfigurationRepository(metadataDataSource);
+    var loadedInstruments = await repository.GetMarketInstrumentsConfigAsync(demoMode, CancellationToken.None);
+    var loadedRules = await repository.GetAlertRulesAsync(CancellationToken.None);
+
+    if (loadedInstruments.Profiles.Count > 0)
+    {
+        instrumentsConfig = loadedInstruments;
+    }
+
+    if (loadedRules.Count > 0)
+    {
+        alertRuleConfigs = loadedRules;
+    }
+}
 
 var host = Host.CreateDefaultBuilder(args)
     .ConfigureServices((_, services) =>
     {
         services.AddSingleton<ChannelFactory>();
-        services.AddSingleton(demoMode
-            ? new MarketInstrumentsConfig
-            {
-                Profiles = new[]
-                {
-                    new MarketInstrumentProfile
-                    {
-                        Exchange = MarketExchange.Demo,
-                        MarketType = MarketType.Spot,
-                        Symbols = new[] { "BTC-USD", "ETH-USD", "SOL-USD" },
-                        TargetUpdateInterval = TimeSpan.FromSeconds(2)
-                    },
-                    new MarketInstrumentProfile
-                    {
-                        Exchange = MarketExchange.Demo,
-                        MarketType = MarketType.Perp,
-                        Symbols = new[] { "BTC-USD", "ETH-USD", "XRP-USD" },
-                        TargetUpdateInterval = TimeSpan.FromMilliseconds(100)
-                    }
-                }
-            }
-            : new MarketInstrumentsConfig
-            {
-                Profiles = new[]
-                {
-                    new MarketInstrumentProfile
-                    {
-                        Exchange = MarketExchange.Kraken,
-                        MarketType = MarketType.Spot,
-                        Symbols = new[] { "XBT/USD", "ETH/USD" },
-                        TargetUpdateInterval = TimeSpan.FromSeconds(2)
-                    },
-                    new MarketInstrumentProfile
-                    {
-                        Exchange = MarketExchange.Coinbase,
-                        MarketType = MarketType.Spot,
-                        Symbols = new[] { "BTC-USD", "ETH-USD", "SOL-USD" },
-                        TargetUpdateInterval = TimeSpan.FromSeconds(2)
-                    },
-                    new MarketInstrumentProfile
-                    {
-                        Exchange = MarketExchange.Bybit,
-                        MarketType = MarketType.Spot,
-                        Symbols = new[] { "BTCUSDT", "ETHUSDT", "SOLUSDT" },
-                        TargetUpdateInterval = TimeSpan.FromSeconds(2)
-                    }
-                }
-            });
+        services.AddSingleton(instrumentsConfig);
+        services.AddSingleton(Options.Create(databaseOptions));
+
         services.AddSingleton(new MonitoringSlaConfig
         {
             MaxTickDelay = TimeSpan.FromSeconds(2)
         });
-        services.AddSingleton<IStorage, InMemoryStorage>();
+
+        if (databaseEnabled && metadataDataSource is not null && timeseriesDataSource is not null)
+        {
+            services.AddSingleton(metadataDataSource);
+            services.AddSingleton(timeseriesDataSource);
+            services.AddSingleton<SqlMigrationRunner>();
+            services.AddSingleton<IConfigurationRepository, PostgresConfigurationRepository>();
+            services.AddSingleton<IStorage, HybridStorage>();
+            services.AddHostedService<MigrationHostedService>();
+        }
+        else
+        {
+            services.AddSingleton<IStorage, InMemoryStorage>();
+        }
+
+        services.AddSingleton<IAlertRuleConfigProvider>(_ => new AlertRuleConfigProvider(alertRuleConfigs));
         services.AddSingleton<IMonitoringService, MonitoringService>();
         services.AddSingleton<IAggregationService, AggregationService>();
         services.AddSingleton<IAlertRule, PriceThresholdRule>();
@@ -114,5 +128,7 @@ static void RegisterMarketDataSources(IServiceCollection services, bool demoMode
         .OrderBy(t => t.FullName, StringComparer.Ordinal);
 
     foreach (var sourceType in sourceTypes)
+    {
         services.AddSingleton(typeof(IMarketDataSource), sourceType);
+    }
 }

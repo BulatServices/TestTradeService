@@ -1,29 +1,53 @@
+using System.Globalization;
 using TestTradeService.Interfaces;
 using TestTradeService.Models;
 
 namespace TestTradeService.Services;
 
 /// <summary>
-/// РџСЂР°РІРёР»Рѕ Р°Р»РµСЂС‚РёРЅРіР° РЅР° СЂРµР·РєРёР№ РІСЃРїР»РµСЃРє РѕР±СЉРµРјР°.
+/// Правило алертинга на резкий всплеск объема.
 /// </summary>
 public sealed class VolumeSpikeRule : IAlertRule
 {
+    private const decimal DefaultMinVolume = 4m;
+    private const int DefaultMinCount = 5;
+    private readonly IAlertRuleConfigProvider _configProvider;
+
     /// <summary>
-    /// РРјСЏ РїСЂР°РІРёР»Р°.
+    /// Инициализирует правило контроля всплеска объема.
+    /// </summary>
+    /// <param name="configProvider">Провайдер параметров правил алертинга.</param>
+    public VolumeSpikeRule(IAlertRuleConfigProvider configProvider)
+    {
+        _configProvider = configProvider;
+    }
+
+    /// <summary>
+    /// Имя правила.
     /// </summary>
     public string Name => "VolumeSpike";
 
     /// <summary>
-    /// РџСЂРѕРІРµСЂСЏРµС‚ СѓСЃР»РѕРІРёСЏ РІСЃРїР»РµСЃРєР° РѕР±СЉРµРјР°.
+    /// Проверяет условия всплеска объема.
     /// </summary>
+    /// <param name="tick">Нормализованный тик.</param>
+    /// <param name="metrics">Рассчитанные метрики по инструменту.</param>
+    /// <returns><c>true</c>, если правило сработало.</returns>
     public bool IsMatch(NormalizedTick tick, MetricsSnapshot metrics)
     {
-        return tick.Volume > 4m && metrics.Count > 5;
+        var parameters = _configProvider.GetParameters(Name, tick.Source, tick.Symbol);
+        var minVolume = GetDecimal(parameters, "min_volume", DefaultMinVolume);
+        var minCount = GetInt(parameters, "min_count", DefaultMinCount);
+
+        return tick.Volume > minVolume && metrics.Count > minCount;
     }
 
     /// <summary>
-    /// Р¤РѕСЂРјРёСЂСѓРµС‚ Р°Р»РµСЂС‚ РїРѕ РІСЃРїР»РµСЃРєСѓ РѕР±СЉРµРјР°.
+    /// Формирует алерт по всплеску объема.
     /// </summary>
+    /// <param name="tick">Нормализованный тик.</param>
+    /// <param name="metrics">Рассчитанные метрики.</param>
+    /// <returns>Сформированный алерт.</returns>
     public Alert CreateAlert(NormalizedTick tick, MetricsSnapshot metrics)
     {
         return new Alert
@@ -34,5 +58,25 @@ public sealed class VolumeSpikeRule : IAlertRule
             Message = $"Volume spike detected: {tick.Volume}",
             Timestamp = tick.Timestamp
         };
+    }
+
+    private static decimal GetDecimal(IReadOnlyDictionary<string, string> parameters, string key, decimal fallback)
+    {
+        if (!parameters.TryGetValue(key, out var value))
+            return fallback;
+
+        return decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed)
+            ? parsed
+            : fallback;
+    }
+
+    private static int GetInt(IReadOnlyDictionary<string, string> parameters, string key, int fallback)
+    {
+        if (!parameters.TryGetValue(key, out var value))
+            return fallback;
+
+        return int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
+            ? parsed
+            : fallback;
     }
 }

@@ -1,0 +1,139 @@
+﻿using Dapper;
+using TestTradeService.Ingestion.Configuration;
+using TestTradeService.Interfaces;
+using TestTradeService.Models;
+
+namespace TestTradeService.Storage;
+
+/// <summary>
+/// Репозиторий конфигурации торговой системы в PostgreSQL.
+/// </summary>
+public sealed class PostgresConfigurationRepository : IConfigurationRepository
+{
+    private readonly MetadataDataSource _metadataDataSource;
+
+    /// <summary>
+    /// Инициализирует репозиторий конфигурации.
+    /// </summary>
+    /// <param name="metadataDataSource">Источник подключений к PostgreSQL для метаданных.</param>
+    public PostgresConfigurationRepository(MetadataDataSource metadataDataSource)
+    {
+        _metadataDataSource = metadataDataSource;
+    }
+
+    /// <summary>
+    /// Загружает конфигурацию инструментов по биржам и типам рынков.
+    /// </summary>
+    /// <param name="demoMode">Признак демо-режима (загружать только demo-профили).</param>
+    /// <param name="cancellationToken">Токен отмены.</param>
+    /// <returns>Конфигурация инструментов.</returns>
+    public async Task<MarketInstrumentsConfig> GetMarketInstrumentsConfigAsync(bool demoMode, CancellationToken cancellationToken)
+    {
+        const string sql = """
+            select
+                exchange,
+                market_type as MarketType,
+                symbol,
+                target_update_interval_ms as TargetUpdateIntervalMs
+            from meta.instruments
+            where is_active = true
+            """;
+
+        await using var connection = await _metadataDataSource.DataSource.OpenConnectionAsync(cancellationToken);
+        var rows = (await connection.QueryAsync<InstrumentConfigRow>(new CommandDefinition(sql, cancellationToken: cancellationToken))).ToArray();
+        var filtered = demoMode
+            ? rows.Where(r => string.Equals(r.Exchange, MarketExchange.Demo.ToString(), StringComparison.OrdinalIgnoreCase))
+            : rows.Where(r => !string.Equals(r.Exchange, MarketExchange.Demo.ToString(), StringComparison.OrdinalIgnoreCase));
+
+        var profiles = filtered
+            .GroupBy(r => $"{r.Exchange}::{r.MarketType}", StringComparer.OrdinalIgnoreCase)
+            .Select(group =>
+            {
+                var first = group.First();
+                return new MarketInstrumentProfile
+                {
+                    Exchange = Enum.Parse<MarketExchange>(first.Exchange, true),
+                    MarketType = Enum.Parse<MarketType>(first.MarketType, true),
+                    Symbols = group.Select(x => x.Symbol).Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
+                    TargetUpdateInterval = TimeSpan.FromMilliseconds(group.Max(x => x.TargetUpdateIntervalMs))
+                };
+            })
+            .ToArray();
+
+        return new MarketInstrumentsConfig
+        {
+            Profiles = profiles
+        };
+    }
+
+    /// <summary>
+    /// Загружает конфигурацию правил алертинга с параметрами.
+    /// </summary>
+    /// <param name="cancellationToken">Токен отмены.</param>
+    /// <returns>Набор конфигураций правил.</returns>
+    public async Task<IReadOnlyCollection<AlertRuleConfig>> GetAlertRulesAsync(CancellationToken cancellationToken)
+    {
+        const string sqlDefinitions = """
+            select id, rule_name as RuleName, exchange, symbol, is_enabled as Enabled
+            from meta.alert_rule_definitions
+            """;
+
+        const string sqlParameters = """
+            select rule_definition_id as RuleDefinitionId, param_key as ParamKey, param_value as ParamValue
+            from meta.alert_rule_parameters
+            """;
+
+        await using var connection = await _metadataDataSource.DataSource.OpenConnectionAsync(cancellationToken);
+
+        var definitions = (await connection.QueryAsync<AlertRuleDefinitionRow>(
+            new CommandDefinition(sqlDefinitions, cancellationToken: cancellationToken))).ToArray();
+        var parameters = (await connection.QueryAsync<AlertRuleParameterRow>(
+            new CommandDefinition(sqlParameters, cancellationToken: cancellationToken))).ToArray();
+
+        var parametersByDefinition = parameters
+            .GroupBy(x => x.RuleDefinitionId)
+            .ToDictionary(
+                group => group.Key,
+                group => (IReadOnlyDictionary<string, string>)group.ToDictionary(
+                    x => x.ParamKey,
+                    x => x.ParamValue,
+                    StringComparer.OrdinalIgnoreCase));
+
+        return definitions
+            .Select(definition => new AlertRuleConfig
+            {
+                RuleName = definition.RuleName,
+                Enabled = definition.Enabled,
+                Exchange = definition.Exchange,
+                Symbol = definition.Symbol,
+                Parameters = parametersByDefinition.GetValueOrDefault(
+                    definition.Id,
+                    new Dictionary<string, string>(0, StringComparer.OrdinalIgnoreCase))
+            })
+            .ToArray();
+    }
+
+    private sealed record InstrumentConfigRow
+    {
+        public required string Exchange { get; init; }
+        public required string MarketType { get; init; }
+        public required string Symbol { get; init; }
+        public required int TargetUpdateIntervalMs { get; init; }
+    }
+
+    private sealed record AlertRuleDefinitionRow
+    {
+        public required long Id { get; init; }
+        public required string RuleName { get; init; }
+        public string? Exchange { get; init; }
+        public string? Symbol { get; init; }
+        public required bool Enabled { get; init; }
+    }
+
+    private sealed record AlertRuleParameterRow
+    {
+        public required long RuleDefinitionId { get; init; }
+        public required string ParamKey { get; init; }
+        public required string ParamValue { get; init; }
+    }
+}
