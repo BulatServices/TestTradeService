@@ -48,3 +48,9 @@ secrets.json
 # Generated runtime files
 *.pid
 *.cache
+
+# Frontend artifacts
+node_modules/
+src/TestTradeService.Web/dist/
+src/TestTradeService.Web/playwright-report/
+src/TestTradeService.Web/test-results/

@@ -33,3 +33,27 @@ dotnet run
 - Источники данных работают параллельно, конвейер обработки независим от источников.
 - Реализацию `IStorage` можно заменить на PostgreSQL/TimescaleDB или другую БД.
 - Метрики и алерты масштабируются через DI и независимые правила.
+
+## Веб-интерфейс (React)
+
+Frontend MVP расположен в `src/TestTradeService.Web`.
+
+Запуск:
+```bash
+cd src/TestTradeService.Web
+npm install
+npm run dev
+```
+
+Проверки:
+```bash
+npm run typecheck
+npm run lint
+npm run test
+npm run build
+```
+
+Переменные окружения:
+- `VITE_API_BASE_URL`
+- `VITE_SIGNALR_URL`
+- `VITE_REQUEST_TIMEOUT_MS`

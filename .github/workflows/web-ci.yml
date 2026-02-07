@@ -1,0 +1,43 @@
+﻿name: web-ci
+
+on:
+  push:
+    paths:
+      - 'src/TestTradeService.Web/**'
+      - '.github/workflows/web-ci.yml'
+  pull_request:
+    paths:
+      - 'src/TestTradeService.Web/**'
+      - '.github/workflows/web-ci.yml'
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/TestTradeService.Web
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install
+        run: npm install
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm run test
+
+      - name: Build
+        run: npm run build
+
