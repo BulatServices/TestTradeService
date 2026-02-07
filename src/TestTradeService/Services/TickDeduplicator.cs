@@ -8,7 +8,7 @@ namespace TestTradeService.Services;
 public sealed class TickDeduplicator
 {
     private readonly TimeSpan _ttl = TimeSpan.FromMinutes(5);
-    private readonly Dictionary<string, DateTimeOffset> _seen = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, DateTimeOffset> _seenAtUtc = new(StringComparer.Ordinal);
 
     /// <summary>
     /// Проверяет тик на дубликат и регистрирует его отпечаток при первом появлении.
@@ -17,23 +17,24 @@ public sealed class TickDeduplicator
     /// <returns><c>true</c>, если тик уже встречался.</returns>
     public bool IsDuplicate(NormalizedTick tick)
     {
-        Cleanup(tick.Timestamp);
+        var now = DateTimeOffset.UtcNow;
+        Cleanup(now);
 
-        if (_seen.ContainsKey(tick.Fingerprint))
+        if (_seenAtUtc.ContainsKey(tick.Fingerprint))
         {
             return true;
         }
 
-        _seen[tick.Fingerprint] = tick.Timestamp;
+        _seenAtUtc[tick.Fingerprint] = now;
         return false;
     }
 
     private void Cleanup(DateTimeOffset now)
     {
-        var expired = _seen.Where(pair => now - pair.Value > _ttl).Select(pair => pair.Key).ToList();
+        var expired = _seenAtUtc.Where(pair => now - pair.Value > _ttl).Select(pair => pair.Key).ToList();
         foreach (var key in expired)
         {
-            _seen.Remove(key);
+            _seenAtUtc.Remove(key);
         }
     }
 }

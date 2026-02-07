@@ -29,18 +29,16 @@ public sealed class TradeCursorStore
         var key = new TradeKey(exchange, symbol);
         var state = _stateByKey.GetOrAdd(key, _ => new TradeCursorState());
         var fingerprint = BuildFingerprint(exchange, symbol, ts, tradeId, price, volume);
+        var now = DateTimeOffset.UtcNow;
 
         lock (state.Sync)
         {
-            CleanupFingerprints(state, DateTimeOffset.UtcNow);
+            CleanupFingerprints(state, now);
 
             if (state.RecentFingerprints.ContainsKey(fingerprint))
                 return false;
 
-            if (!string.IsNullOrWhiteSpace(tradeId) && string.Equals(state.LastTradeId, tradeId, StringComparison.Ordinal))
-                return false;
-
-            if (ts < state.LastTimestamp)
+            if (string.IsNullOrWhiteSpace(tradeId) && ts < state.LastTimestamp)
                 return false;
 
             return true;
@@ -64,18 +62,16 @@ public sealed class TradeCursorStore
         var key = new TradeKey(exchange, symbol);
         var state = _stateByKey.GetOrAdd(key, _ => new TradeCursorState());
         var fingerprint = BuildFingerprint(exchange, symbol, ts, tradeId, price, volume);
+        var now = DateTimeOffset.UtcNow;
 
         lock (state.Sync)
         {
-            CleanupFingerprints(state, DateTimeOffset.UtcNow);
+            CleanupFingerprints(state, now);
 
             if (ts > state.LastTimestamp)
                 state.LastTimestamp = ts;
 
-            if (!string.IsNullOrWhiteSpace(tradeId))
-                state.LastTradeId = tradeId;
-
-            state.RecentFingerprints[fingerprint] = ts;
+            state.RecentFingerprints[fingerprint] = now;
         }
     }
 
@@ -97,7 +93,8 @@ public sealed class TradeCursorStore
         decimal price,
         decimal volume)
     {
-        return $"{exchange}:{symbol}:{ts:O}:{price}:{volume}:{tradeId}";
+        var source = exchange.ToString();
+        return TickFingerprint.Build(source, symbol, ts, price, volume, tradeId);
     }
 
     private readonly record struct TradeKey(MarketExchange Exchange, string Symbol);
@@ -106,7 +103,6 @@ public sealed class TradeCursorStore
     {
         public object Sync { get; } = new();
         public DateTimeOffset LastTimestamp { get; set; } = DateTimeOffset.MinValue;
-        public string? LastTradeId { get; set; }
         public Dictionary<string, DateTimeOffset> RecentFingerprints { get; } = new(StringComparer.Ordinal);
     }
 }

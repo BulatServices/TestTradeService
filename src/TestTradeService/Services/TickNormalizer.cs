@@ -14,7 +14,13 @@ public sealed class TickNormalizer
     /// <returns>Нормализованный тик.</returns>
     public NormalizedTick Normalize(Tick tick)
     {
-        var fingerprint = $"{tick.Source}:{tick.Symbol}:{tick.Timestamp:O}:{tick.Price}:{tick.Volume}:{tick.TradeId}";
+        var fingerprint = TickFingerprint.Build(
+            tick.Source,
+            tick.Symbol,
+            tick.Timestamp,
+            tick.Price,
+            tick.Volume,
+            tick.TradeId);
         return new NormalizedTick
         {
             Source = tick.Source,

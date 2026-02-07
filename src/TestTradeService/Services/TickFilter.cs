@@ -23,5 +23,11 @@ public sealed class TickFilter
     /// </summary>
     /// <param name="tick">Нормализованный тик.</param>
     /// <returns><c>true</c>, если символ разрешен.</returns>
-    public bool IsAllowed(NormalizedTick tick) => _allowedSymbols.Contains(tick.Symbol);
+    public bool IsAllowed(NormalizedTick tick)
+    {
+        if (tick.Price <= 0m || tick.Volume <= 0m)
+            return false;
+
+        return _allowedSymbols.Contains(tick.Symbol);
+    }
 }
