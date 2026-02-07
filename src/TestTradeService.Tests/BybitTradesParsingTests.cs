@@ -18,10 +18,10 @@ public sealed class BybitTradesParsingTests
             "{\"topic\":\"publicTrade.BTCUSDT\",\"type\":\"snapshot\",\"ts\":1700000000000,\"data\":[{\"T\":1700000000000,\"s\":\"BTCUSDT\",\"p\":\"50000.1\",\"v\":\"0.001\",\"i\":\"abc\"}]}";
 
         var ticks = BybitTradesParsing.ParseWebSocketPublicTrades(payload, DateTimeOffset.UtcNow);
+        var tick = Assert.Single(ticks);
 
-        Assert.Single(ticks);
-        Assert.Equal("BTCUSDT", ticks[0].Symbol);
-        Assert.Equal("abc", ticks[0].TradeId);
+        Assert.Equal("BTCUSDT", tick.Symbol);
+        Assert.Equal("abc", tick.TradeId);
     }
 
     /// <summary>
@@ -47,10 +47,9 @@ public sealed class BybitTradesParsingTests
             "{\"retCode\":0,\"retMsg\":\"OK\",\"result\":{\"category\":\"spot\",\"list\":[{\"execId\":\"abc\",\"price\":\"50000.1\",\"size\":\"0.001\",\"time\":\"1700000000000\"}]}}";
 
         var ticks = BybitTradesParsing.ParseRestRecentTrades("BTCUSDT", payload);
+        var tick = Assert.Single(ticks);
 
-        Assert.Single(ticks);
-        Assert.Equal("BTCUSDT", ticks[0].Symbol);
-        Assert.Equal("abc", ticks[0].TradeId);
+        Assert.Equal("BTCUSDT", tick.Symbol);
+        Assert.Equal("abc", tick.TradeId);
     }
 }
-

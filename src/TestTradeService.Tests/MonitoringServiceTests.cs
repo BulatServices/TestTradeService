@@ -17,25 +17,25 @@ public sealed class MonitoringServiceTests
     public void RecordTickAndAggregate_UpdatesSnapshotStats()
     {
         var service = new MonitoringService(new MonitoringSlaConfig { MaxTickDelay = TimeSpan.FromSeconds(2) });
-        var tick = CreateTick("Binance-spot", new DateTimeOffset(2024, 01, 01, 12, 00, 00, TimeSpan.Zero));
+        var tick = CreateTick("Bybit-spot", new DateTimeOffset(2024, 01, 01, 12, 00, 00, TimeSpan.Zero));
         var candle = CreateCandle(tick);
 
-        service.RecordTick("Binance-spot", tick);
-        service.RecordAggregate("Binance-spot", candle);
-        service.RecordDelay("Binance-spot", TimeSpan.FromMilliseconds(500));
+        service.RecordTick("Bybit-spot", tick);
+        service.RecordAggregate("Bybit-spot", candle);
+        service.RecordDelay("Bybit-spot", TimeSpan.FromMilliseconds(500));
 
         var snapshot = service.Snapshot();
 
         Assert.Single(snapshot.SourceStats);
         Assert.Single(snapshot.ExchangeStats);
 
-        var sourceStats = snapshot.SourceStats["Binance-spot"];
+        var sourceStats = snapshot.SourceStats["Bybit-spot"];
         Assert.Equal(1, sourceStats.TickCount);
         Assert.Equal(1, sourceStats.AggregateCount);
         Assert.True(sourceStats.AverageDelayMs > 0);
         Assert.Equal(tick.Timestamp, sourceStats.LastTickTime);
 
-        var exchangeStats = snapshot.ExchangeStats[MarketExchange.Binance];
+        var exchangeStats = snapshot.ExchangeStats[MarketExchange.Bybit];
         Assert.Equal(1, exchangeStats.TickCount);
         Assert.Equal(1, exchangeStats.AggregateCount);
         Assert.True(exchangeStats.AverageDelayMs > 0);

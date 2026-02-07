@@ -21,13 +21,13 @@ public sealed class MarketInstrumentsConfigTests
             {
                 new MarketInstrumentProfile
                 {
-                    Exchange = MarketExchange.Binance,
+                    Exchange = MarketExchange.Bybit,
                     MarketType = MarketType.Spot,
                     Symbols = new[] { "BTCUSDT", "ETHUSDT" }
                 },
                 new MarketInstrumentProfile
                 {
-                    Exchange = MarketExchange.Binance,
+                    Exchange = MarketExchange.Bybit,
                     MarketType = MarketType.Perp,
                     Symbols = new[] { "ETHUSDT", "BTCUSDT" }
                 }

@@ -34,7 +34,7 @@ public sealed class DataPipelineTests
             {
                 new MarketInstrumentProfile
                 {
-                    Exchange = MarketExchange.Binance,
+                    Exchange = MarketExchange.Bybit,
                     MarketType = MarketType.Spot,
                     Symbols = new[] { "BTCUSDT" }
                 }
@@ -93,7 +93,7 @@ public sealed class DataPipelineTests
             {
                 new MarketInstrumentProfile
                 {
-                    Exchange = MarketExchange.Binance,
+                    Exchange = MarketExchange.Bybit,
                     MarketType = MarketType.Spot,
                     Symbols = new[] { "BTCUSDT" }
                 }
@@ -150,7 +150,7 @@ public sealed class DataPipelineTests
             {
                 new MarketInstrumentProfile
                 {
-                    Exchange = MarketExchange.Binance,
+                    Exchange = MarketExchange.Bybit,
                     MarketType = MarketType.Spot,
                     Symbols = new[] { "BTCUSDT" }
                 }
@@ -294,6 +294,12 @@ public sealed class DataPipelineTests
 
         public void RecordDelay(string sourceName, TimeSpan delay) => DelayCalls++;
 
-        public MonitoringSnapshot Snapshot() => new();
+        public MonitoringSnapshot Snapshot() => new()
+        {
+            Timestamp = DateTimeOffset.UtcNow,
+            ExchangeStats = new Dictionary<MarketExchange, ExchangeStats>(),
+            SourceStats = new Dictionary<string, SourceStats>(),
+            Warnings = Array.Empty<string>()
+        };
     }
 }

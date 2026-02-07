@@ -18,10 +18,10 @@ public sealed class CoinbaseTradesParsingTests
             "{\"type\":\"match\",\"trade_id\":123,\"product_id\":\"BTC-USD\",\"price\":\"50000.10\",\"size\":\"0.001\",\"time\":\"2020-01-01T00:00:00Z\"}";
 
         var ticks = CoinbaseTradesParsing.ParseWebSocketMatches(payload, DateTimeOffset.UtcNow);
+        var tick = Assert.Single(ticks);
 
-        Assert.Single(ticks);
-        Assert.Equal("BTC-USD", ticks[0].Symbol);
-        Assert.Equal("123", ticks[0].TradeId);
+        Assert.Equal("BTC-USD", tick.Symbol);
+        Assert.Equal("123", tick.TradeId);
     }
 
     /// <summary>
@@ -52,4 +52,3 @@ public sealed class CoinbaseTradesParsingTests
         Assert.All(ticks, t => Assert.Equal("BTC-USD", t.Symbol));
     }
 }
-
