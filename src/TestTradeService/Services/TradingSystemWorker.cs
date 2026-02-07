@@ -50,6 +50,27 @@ public sealed class TradingSystemWorker : BackgroundService
         await Task.WhenAll(sourceTasks.Append(pipelineTask).Append(monitoringTask));
     }
 
+    /// <summary>
+    /// Запрашивает корректную остановку всех источников, затем останавливает воркер.
+    /// </summary>
+    /// <param name="cancellationToken">Токен отмены.</param>
+    public override async Task StopAsync(CancellationToken cancellationToken)
+    {
+        foreach (var source in _sources)
+        {
+            try
+            {
+                await source.StopAsync(cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to stop source {Source}", source.Name);
+            }
+        }
+
+        await base.StopAsync(cancellationToken);
+    }
+
     private async Task RunSourceAsync(IMarketDataSource source, ChannelWriter<Tick> writer, CancellationToken cancellationToken)
     {
         try

@@ -34,6 +34,16 @@ public sealed class RestPollingSource : IMarketDataSource
     public string Name => "RestApi";
 
     /// <summary>
+    /// Биржа (торговая площадка), к которой относится источник.
+    /// </summary>
+    public MarketExchange Exchange => MarketExchange.Demo;
+
+    /// <summary>
+    /// Транспорт/тип подключения источника.
+    /// </summary>
+    public MarketDataSourceTransport Transport => MarketDataSourceTransport.Rest;
+
+    /// <summary>
     /// Запускает генерацию/чтение тиков и отправляет их в канал.
     /// </summary>
     /// <param name="writer">Канал для публикации тиков.</param>
@@ -81,6 +91,13 @@ public sealed class RestPollingSource : IMarketDataSource
         writer.TryComplete();
     }
 
+    /// <summary>
+    /// Запрашивает корректную остановку источника.
+    /// Для polling-реализации основным механизмом остановки является отмена токена в <see cref="StartAsync"/>.
+    /// </summary>
+    /// <param name="cancellationToken">Токен отмены.</param>
+    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
     private async Task StoreInstrumentMetadataAsync(MarketInstrumentProfile profile, CancellationToken cancellationToken)
     {
         foreach (var symbol in profile.Symbols)
@@ -88,7 +105,7 @@ public sealed class RestPollingSource : IMarketDataSource
             var (baseAsset, quoteAsset) = ParseSymbol(symbol);
             await _storage.StoreInstrumentAsync(new InstrumentMetadata
             {
-                Exchange = Name,
+                Exchange = Exchange.ToString(),
                 MarketType = profile.MarketType,
                 Symbol = symbol,
                 BaseAsset = baseAsset,

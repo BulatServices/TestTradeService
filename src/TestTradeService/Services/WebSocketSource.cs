@@ -34,6 +34,16 @@ public sealed class WebSocketSource : IMarketDataSource
     public string Name => "WebSocket";
 
     /// <summary>
+    /// Биржа (торговая площадка), к которой относится источник.
+    /// </summary>
+    public MarketExchange Exchange => MarketExchange.Demo;
+
+    /// <summary>
+    /// Транспорт/тип подключения источника.
+    /// </summary>
+    public MarketDataSourceTransport Transport => MarketDataSourceTransport.WebSocket;
+
+    /// <summary>
     /// Запускает потоковую публикацию тиков в канал.
     /// </summary>
     /// <param name="writer">Канал для публикации тиков.</param>
@@ -84,6 +94,13 @@ public sealed class WebSocketSource : IMarketDataSource
         writer.TryComplete();
     }
 
+    /// <summary>
+    /// Запрашивает корректную остановку источника.
+    /// Для WebSocket-реализации здесь обычно закрываются соединения и выполняется отписка.
+    /// </summary>
+    /// <param name="cancellationToken">Токен отмены.</param>
+    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
     private async Task StoreInstrumentMetadataAsync(MarketInstrumentProfile profile, CancellationToken cancellationToken)
     {
         foreach (var symbol in profile.Symbols)
@@ -91,7 +108,7 @@ public sealed class WebSocketSource : IMarketDataSource
             var (baseAsset, quoteAsset) = ParseSymbol(symbol);
             await _storage.StoreInstrumentAsync(new InstrumentMetadata
             {
-                Exchange = Name,
+                Exchange = Exchange.ToString(),
                 MarketType = profile.MarketType,
                 Symbol = symbol,
                 BaseAsset = baseAsset,
