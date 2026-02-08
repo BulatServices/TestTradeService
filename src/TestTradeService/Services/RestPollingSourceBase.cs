@@ -1,4 +1,4 @@
-using System.Threading.Channels;
+﻿using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using TestTradeService.Interfaces;
 using TestTradeService.Ingestion.Configuration;
@@ -7,7 +7,7 @@ using TestTradeService.Models;
 namespace TestTradeService.Services;
 
 /// <summary>
-/// Базовый источник рыночных данных через периодический REST polling сделок.
+/// Р‘Р°Р·РѕРІС‹Р№ РёСЃС‚РѕС‡РЅРёРє СЂС‹РЅРѕС‡РЅС‹С… РґР°РЅРЅС‹С… С‡РµСЂРµР· РїРµСЂРёРѕРґРёС‡РµСЃРєРёР№ REST polling СЃРґРµР»РѕРє.
 /// </summary>
 public abstract class RestPollingSourceObsolete : IMarketDataSource
 {
@@ -17,13 +17,13 @@ public abstract class RestPollingSourceObsolete : IMarketDataSource
     private readonly TradeCursorStore _tradeCursorStore;
 
     /// <summary>
-    /// Инициализирует базовый REST polling-источник.
+    /// РРЅРёС†РёР°Р»РёР·РёСЂСѓРµС‚ Р±Р°Р·РѕРІС‹Р№ REST polling-РёСЃС‚РѕС‡РЅРёРє.
     /// </summary>
-    /// <param name="logger">Логгер источника.</param>
-    /// <param name="instrumentsConfig">Конфигурация инструментов.</param>
-    /// <param name="storage">Слой хранения.</param>
-    /// <param name="tradeCursorStore">Курсор сделок для дедупликации.</param>
-    /// <param name="exchange">Биржа, к которой относится источник.</param>
+    /// <param name="logger">Р›РѕРіРіРµСЂ РёСЃС‚РѕС‡РЅРёРєР°.</param>
+    /// <param name="instrumentsConfig">РљРѕРЅС„РёРіСѓСЂР°С†РёСЏ РёРЅСЃС‚СЂСѓРјРµРЅС‚РѕРІ.</param>
+    /// <param name="storage">РЎР»РѕР№ С…СЂР°РЅРµРЅРёСЏ.</param>
+    /// <param name="tradeCursorStore">РљСѓСЂСЃРѕСЂ СЃРґРµР»РѕРє РґР»СЏ РґРµРґСѓРїР»РёРєР°С†РёРё.</param>
+    /// <param name="exchange">Р‘РёСЂР¶Р°, Рє РєРѕС‚РѕСЂРѕР№ РѕС‚РЅРѕСЃРёС‚СЃСЏ РёСЃС‚РѕС‡РЅРёРє.</param>
     protected RestPollingSourceObsolete(
         ILogger logger,
         MarketInstrumentsConfig instrumentsConfig,
@@ -39,39 +39,39 @@ public abstract class RestPollingSourceObsolete : IMarketDataSource
     }
 
     /// <summary>
-    /// Имя источника.
+    /// РРјСЏ РёСЃС‚РѕС‡РЅРёРєР°.
     /// </summary>
     public string Name => $"{Exchange}-Rest";
 
     /// <summary>
-    /// Биржа (торговая площадка), к которой относится источник.
+    /// Р‘РёСЂР¶Р° (С‚РѕСЂРіРѕРІР°СЏ РїР»РѕС‰Р°РґРєР°), Рє РєРѕС‚РѕСЂРѕР№ РѕС‚РЅРѕСЃРёС‚СЃСЏ РёСЃС‚РѕС‡РЅРёРє.
     /// </summary>
     public MarketExchange Exchange { get; }
 
     /// <summary>
-    /// Транспорт/тип подключения источника.
+    /// РўСЂР°РЅСЃРїРѕСЂС‚/С‚РёРї РїРѕРґРєР»СЋС‡РµРЅРёСЏ РёСЃС‚РѕС‡РЅРёРєР°.
     /// </summary>
     public MarketDataSourceTransport Transport => MarketDataSourceTransport.Rest;
 
     /// <summary>
-    /// Запускает цикл polling и публикует тики сделок в канал.
+    /// Р—Р°РїСѓСЃРєР°РµС‚ С†РёРєР» polling Рё РїСѓР±Р»РёРєСѓРµС‚ С‚РёРєРё СЃРґРµР»РѕРє РІ РєР°РЅР°Р».
     /// </summary>
-    /// <param name="writer">Канал для публикации тиков.</param>
-    /// <param name="cancellationToken">Токен отмены.</param>
-    /// <returns>Задача выполнения цикла polling.</returns>
+    /// <param name="writer">РљР°РЅР°Р» РґР»СЏ РїСѓР±Р»РёРєР°С†РёРё С‚РёРєРѕРІ.</param>
+    /// <param name="cancellationToken">РўРѕРєРµРЅ РѕС‚РјРµРЅС‹.</param>
+    /// <returns>Р—Р°РґР°С‡Р° РІС‹РїРѕР»РЅРµРЅРёСЏ С†РёРєР»Р° polling.</returns>
     public async Task StartAsync(ChannelWriter<Tick> writer, CancellationToken cancellationToken)
     {
-        var profile = _instrumentsConfig.GetProfile(Exchange, MarketType.Spot);
+        var profile = _instrumentsConfig.GetProfile(Exchange, MarketType.Spot, MarketDataSourceTransport.Rest);
         if (profile is null)
         {
-            _logger.LogWarning("Не настроены инструменты для {Exchange} spot. REST polling остановлен.", Exchange);
+            _logger.LogWarning("РќРµ РЅР°СЃС‚СЂРѕРµРЅС‹ РёРЅСЃС‚СЂСѓРјРµРЅС‚С‹ РґР»СЏ {Exchange} spot. REST polling РѕСЃС‚Р°РЅРѕРІР»РµРЅ.", Exchange);
             return;
         }
 
         var symbols = profile.Symbols?.ToArray() ?? Array.Empty<string>();
         if (symbols.Length == 0)
         {
-            _logger.LogWarning("Профиль {Exchange} spot не содержит символов. REST polling остановлен.", Exchange);
+            _logger.LogWarning("РџСЂРѕС„РёР»СЊ {Exchange} spot РЅРµ СЃРѕРґРµСЂР¶РёС‚ СЃРёРјРІРѕР»РѕРІ. REST polling РѕСЃС‚Р°РЅРѕРІР»РµРЅ.", Exchange);
             return;
         }
 
@@ -95,33 +95,33 @@ public abstract class RestPollingSourceObsolete : IMarketDataSource
     }
 
     /// <summary>
-    /// Запрашивает корректную остановку источника.
+    /// Р—Р°РїСЂР°С€РёРІР°РµС‚ РєРѕСЂСЂРµРєС‚РЅСѓСЋ РѕСЃС‚Р°РЅРѕРІРєСѓ РёСЃС‚РѕС‡РЅРёРєР°.
     /// </summary>
-    /// <param name="cancellationToken">Токен отмены.</param>
+    /// <param name="cancellationToken">РўРѕРєРµРЅ РѕС‚РјРµРЅС‹.</param>
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
     /// <summary>
-    /// Выполняет polling для батча символов и возвращает 0..N тиков сделок.
+    /// Р’С‹РїРѕР»РЅСЏРµС‚ polling РґР»СЏ Р±Р°С‚С‡Р° СЃРёРјРІРѕР»РѕРІ Рё РІРѕР·РІСЂР°С‰Р°РµС‚ 0..N С‚РёРєРѕРІ СЃРґРµР»РѕРє.
     /// </summary>
     protected abstract Task<IReadOnlyCollection<Tick>> PollBatchAsync(IReadOnlyCollection<string> symbolsBatch, CancellationToken ct);
 
     /// <summary>
-    /// Размер батча символов на один polling-проход.
+    /// Р Р°Р·РјРµСЂ Р±Р°С‚С‡Р° СЃРёРјРІРѕР»РѕРІ РЅР° РѕРґРёРЅ polling-РїСЂРѕС…РѕРґ.
     /// </summary>
     protected virtual int BatchSize => 20;
 
     /// <summary>
-    /// Ограничение по числу запросов в секунду (упрощённое).
+    /// РћРіСЂР°РЅРёС‡РµРЅРёРµ РїРѕ С‡РёСЃР»Сѓ Р·Р°РїСЂРѕСЃРѕРІ РІ СЃРµРєСѓРЅРґСѓ (СѓРїСЂРѕС‰С‘РЅРЅРѕРµ).
     /// </summary>
     protected virtual int RequestsPerSecondLimit => 5;
 
     /// <summary>
-    /// Максимальное число повторов при ошибке polling.
+    /// РњР°РєСЃРёРјР°Р»СЊРЅРѕРµ С‡РёСЃР»Рѕ РїРѕРІС‚РѕСЂРѕРІ РїСЂРё РѕС€РёР±РєРµ polling.
     /// </summary>
     protected virtual int MaxRetries => 3;
 
     /// <summary>
-    /// Начальная задержка backoff при ошибке.
+    /// РќР°С‡Р°Р»СЊРЅР°СЏ Р·Р°РґРµСЂР¶РєР° backoff РїСЂРё РѕС€РёР±РєРµ.
     /// </summary>
     protected virtual TimeSpan InitialBackoff => TimeSpan.FromMilliseconds(250);
 
@@ -202,3 +202,4 @@ public abstract class RestPollingSourceObsolete : IMarketDataSource
         };
     }
 }
+

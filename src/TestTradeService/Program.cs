@@ -1,28 +1,29 @@
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
+﻿using Microsoft.Extensions.Options;
 using Npgsql;
-using TestTradeService.Interfaces;
-using TestTradeService.Ingestion.Configuration;
+using TestTradeService.Api;
 using TestTradeService.Ingestion.Management;
-using TestTradeService.Models;
+using TestTradeService.Ingestion.Configuration;
+using TestTradeService.Interfaces;
 using TestTradeService.Monitoring;
 using TestTradeService.Monitoring.Configuration;
+using TestTradeService.Realtime;
 using TestTradeService.Services;
 using TestTradeService.Storage;
 using TestTradeService.Storage.Configuration;
+using TestTradeService.Storage.Repositories;
+using TestTradeService.Storage.Services;
 
 var demoMode = string.Equals(Environment.GetEnvironmentVariable("DEMO_MODE"), "true", StringComparison.OrdinalIgnoreCase);
 
-var bootstrapConfiguration = new ConfigurationBuilder()
+var builder = WebApplication.CreateBuilder(args);
+builder.WebHost.UseUrls("http://0.0.0.0:5000");
+
+builder.Configuration
     .SetBasePath(Directory.GetCurrentDirectory())
     .AddJsonFile("appsettings.json", optional: true)
-    .AddEnvironmentVariables()
-    .Build();
+    .AddEnvironmentVariables();
 
-var databaseOptions = bootstrapConfiguration.GetSection(DatabaseOptions.SectionName).Get<DatabaseOptions>() ?? new DatabaseOptions();
+var databaseOptions = builder.Configuration.GetSection(DatabaseOptions.SectionName).Get<DatabaseOptions>() ?? new DatabaseOptions();
 var databaseEnabled = databaseOptions.HasBothConnections();
 
 var instrumentsConfig = DefaultConfigurationFactory.CreateInstruments(demoMode);
@@ -56,56 +57,90 @@ if (databaseEnabled)
     }
 }
 
-var host = Host.CreateDefaultBuilder(args)
-    .ConfigureServices((_, services) =>
+builder.Services.AddControllers();
+builder.Services.AddSignalR();
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("ApiCors", policy =>
     {
-        services.AddSingleton<ChannelFactory>();
-        services.AddSingleton(instrumentsConfig);
-        services.AddSingleton(Options.Create(databaseOptions));
+        policy
+            .WithOrigins("http://localhost:5173")
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+            .AllowCredentials();
+    });
+});
 
-        services.AddSingleton(new MonitoringSlaConfig
-        {
-            MaxTickDelay = TimeSpan.FromSeconds(2)
-        });
+builder.Services.AddSingleton<ChannelFactory>();
+builder.Services.AddSingleton(instrumentsConfig);
+builder.Services.AddSingleton(Options.Create(databaseOptions));
 
-        if (databaseEnabled && metadataDataSource is not null && timeseriesDataSource is not null)
-        {
-            services.AddSingleton(metadataDataSource);
-            services.AddSingleton(timeseriesDataSource);
-            services.AddSingleton<SqlMigrationRunner>();
-            services.AddSingleton<IConfigurationRepository, PostgresConfigurationRepository>();
-            services.AddSingleton<IStorage, HybridStorage>();
-            services.AddHostedService<MigrationHostedService>();
-        }
-        else
-        {
-            services.AddSingleton<IStorage, InMemoryStorage>();
-        }
+builder.Services.AddSingleton(new MonitoringSlaConfig
+{
+    MaxTickDelay = TimeSpan.FromSeconds(2)
+});
 
-        services.AddSingleton<IAlertRuleConfigProvider>(_ => new AlertRuleConfigProvider(alertRuleConfigs));
-        services.AddSingleton<IMonitoringService, MonitoringService>();
-        services.AddSingleton<IAggregationService, AggregationService>();
-        services.AddSingleton<IAlertRule, PriceThresholdRule>();
-        services.AddSingleton<IAlertRule, VolumeSpikeRule>();
-        services.AddSingleton<INotifier, ConsoleNotifier>();
-        services.AddSingleton<INotifier, FileNotifier>();
-        services.AddSingleton<INotifier, EmailStubNotifier>();
-        services.AddSingleton<AlertingService>();
-        services.AddSingleton<DataPipeline>();
-        services.AddSingleton<TradeCursorStore>();
+if (databaseEnabled && metadataDataSource is not null && timeseriesDataSource is not null)
+{
+    builder.Services.AddSingleton(metadataDataSource);
+    builder.Services.AddSingleton(timeseriesDataSource);
+    builder.Services.AddSingleton<SqlMigrationRunner>();
+    builder.Services.AddSingleton<IConfigurationRepository, PostgresConfigurationRepository>();
+    builder.Services.AddSingleton<IStorage, HybridStorage>();
+    builder.Services.AddHostedService<MigrationHostedService>();
 
-        RegisterMarketDataSources(services, demoMode);
-        services.AddIngestionSubsystem();
-        services.AddHostedService<TradingSystemWorker>();
-    })
-    .ConfigureLogging(logging =>
-    {
-        logging.ClearProviders();
-        logging.AddConsole();
-    })
-    .Build();
+    builder.Services.AddSingleton<IProcessedReadRepository, ProcessedReadRepository>();
+    builder.Services.AddSingleton<IAlertReadRepository, AlertReadRepository>();
+    builder.Services.AddSingleton<IAlertRuleWriteRepository, AlertRuleWriteRepository>();
+}
+else
+{
+    builder.Services.AddSingleton<IStorage, InMemoryStorage>();
+    builder.Services.AddSingleton<IProcessedReadRepository, InMemoryProcessedReadRepository>();
+    builder.Services.AddSingleton<InMemoryAlertRepository>();
+    builder.Services.AddSingleton<IAlertReadRepository>(sp => sp.GetRequiredService<InMemoryAlertRepository>());
+    builder.Services.AddSingleton<IAlertRuleWriteRepository>(sp => sp.GetRequiredService<InMemoryAlertRepository>());
+}
 
-await host.RunAsync();
+builder.Services.AddSingleton<IMutableAlertRuleConfigProvider>(_ => new AlertRuleConfigProvider(alertRuleConfigs));
+builder.Services.AddSingleton<IAlertRuleConfigProvider>(sp => sp.GetRequiredService<IMutableAlertRuleConfigProvider>());
+builder.Services.AddSingleton<IMonitoringService, MonitoringService>();
+builder.Services.AddSingleton<IAggregationService, AggregationService>();
+builder.Services.AddSingleton<IAlertRule, PriceThresholdRule>();
+builder.Services.AddSingleton<IAlertRule, VolumeSpikeRule>();
+builder.Services.AddSingleton<INotifier, ConsoleNotifier>();
+builder.Services.AddSingleton<INotifier, FileNotifier>();
+builder.Services.AddSingleton<INotifier, EmailStubNotifier>();
+builder.Services.AddSingleton<AlertingService>();
+builder.Services.AddSingleton<IMarketDataEventBus, MarketDataEventBus>();
+builder.Services.AddSingleton<DataPipeline>();
+builder.Services.AddSingleton<TradeCursorStore>();
+builder.Services.AddSingleton<ISourceConfigService, SourceConfigService>();
+
+builder.Services.AddSingleton<MarketHubConnectionStateStore>();
+builder.Services.AddHostedService<MarketDataBroadcaster>();
+
+RegisterMarketDataSources(builder.Services, demoMode);
+builder.Services.AddIngestionSubsystem();
+
+builder.Services.AddSingleton<TradingSystemWorker>();
+builder.Services.AddSingleton<IRuntimeReconfigurationService>(sp => sp.GetRequiredService<TradingSystemWorker>());
+builder.Services.AddHostedService(sp => sp.GetRequiredService<TradingSystemWorker>());
+
+builder.Logging.ClearProviders();
+builder.Logging.AddConsole();
+
+var app = builder.Build();
+
+app.UseMiddleware<ApiExceptionMiddleware>();
+app.UseRouting();
+app.UseCors("ApiCors");
+
+app.MapControllers();
+app.MapHub<MarketDataHub>("/hubs/market-data");
+app.MapGet("/healthz", () => Results.Ok(new { status = "ok" }));
+
+await app.RunAsync();
 
 static void RegisterMarketDataSources(IServiceCollection services, bool demoMode)
 {

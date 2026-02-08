@@ -18,6 +18,11 @@ public sealed class MarketInstrumentProfile
     public required MarketType MarketType { get; init; }
 
     /// <summary>
+    /// Транспорт источника данных.
+    /// </summary>
+    public required MarketDataSourceTransport Transport { get; init; }
+
+    /// <summary>
     /// Минимальный набор символов для подписки/опроса.
     /// </summary>
     public required IReadOnlyCollection<string> Symbols { get; init; }
@@ -33,10 +38,16 @@ public sealed class MarketInstrumentProfile
 /// </summary>
 public sealed class MarketInstrumentsConfig
 {
+    private IReadOnlyCollection<MarketInstrumentProfile> _profiles = Array.Empty<MarketInstrumentProfile>();
+
     /// <summary>
     /// Наборы инструментов по рынкам.
     /// </summary>
-    public IReadOnlyCollection<MarketInstrumentProfile> Profiles { get; init; } = Array.Empty<MarketInstrumentProfile>();
+    public IReadOnlyCollection<MarketInstrumentProfile> Profiles
+    {
+        get => _profiles;
+        init => _profiles = value;
+    }
 
     /// <summary>
     /// Возвращает объединенный список всех символов.
@@ -44,7 +55,7 @@ public sealed class MarketInstrumentsConfig
     /// <returns>Список символов без повторов.</returns>
     public IReadOnlyCollection<string> GetAllSymbols()
     {
-        return Profiles
+        return _profiles
             .SelectMany(profile => profile.Symbols)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
@@ -58,6 +69,30 @@ public sealed class MarketInstrumentsConfig
     /// <returns>Профиль инструментов или <c>null</c>, если профиль отсутствует.</returns>
     public MarketInstrumentProfile? GetProfile(MarketExchange exchange, MarketType marketType)
     {
-        return Profiles.FirstOrDefault(profile => profile.Exchange == exchange && profile.MarketType == marketType);
+        return _profiles.FirstOrDefault(profile => profile.Exchange == exchange && profile.MarketType == marketType);
+    }
+
+    /// <summary>
+    /// Возвращает профиль инструментов по типу рынка и транспорту.
+    /// </summary>
+    /// <param name="exchange">Биржа.</param>
+    /// <param name="marketType">Тип рынка.</param>
+    /// <param name="transport">Транспорт источника.</param>
+    /// <returns>Профиль инструментов или <c>null</c>, если профиль отсутствует.</returns>
+    public MarketInstrumentProfile? GetProfile(MarketExchange exchange, MarketType marketType, MarketDataSourceTransport transport)
+    {
+        return _profiles.FirstOrDefault(profile =>
+            profile.Exchange == exchange
+            && profile.MarketType == marketType
+            && profile.Transport == transport);
+    }
+
+    /// <summary>
+    /// Заменяет текущий снимок профилей инструментов.
+    /// </summary>
+    /// <param name="profiles">Новый набор профилей.</param>
+    public void ReplaceProfiles(IReadOnlyCollection<MarketInstrumentProfile> profiles)
+    {
+        _profiles = profiles;
     }
 }

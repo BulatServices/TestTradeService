@@ -18,6 +18,7 @@ public sealed class DataPipeline
     private readonly IStorage _storage;
     private readonly AlertingService _alerting;
     private readonly IMonitoringService _monitoring;
+    private readonly IMarketDataEventBus _eventBus;
     private readonly ILogger<DataPipeline> _logger;
 
     /// <summary>
@@ -34,6 +35,7 @@ public sealed class DataPipeline
         IStorage storage,
         AlertingService alerting,
         IMonitoringService monitoring,
+        IMarketDataEventBus eventBus,
         MarketInstrumentsConfig instrumentsConfig,
         ILogger<DataPipeline> logger)
     {
@@ -41,6 +43,7 @@ public sealed class DataPipeline
         _storage = storage;
         _alerting = alerting;
         _monitoring = monitoring;
+        _eventBus = eventBus;
         _filter = new TickFilter(instrumentsConfig.GetAllSymbols());
         _logger = logger;
     }
@@ -69,6 +72,7 @@ public sealed class DataPipeline
             var delay = DateTimeOffset.UtcNow - normalized.Timestamp;
             _monitoring.RecordDelay(normalized.Source, delay);
             _monitoring.RecordTick(normalized.Source, normalized);
+            _eventBus.PublishTick(normalized);
 
             await _storage.StoreTickAsync(normalized, cancellationToken);
             var metrics = _aggregationService.UpdateMetrics(normalized);
@@ -78,9 +82,14 @@ public sealed class DataPipeline
             {
                 _monitoring.RecordAggregate(normalized.Source, candle);
                 await _storage.StoreAggregateAsync(candle, cancellationToken);
+                _eventBus.PublishAggregate(candle);
             }
 
-            await _alerting.HandleAsync(normalized, metrics, cancellationToken);
+            var alerts = await _alerting.HandleAsync(normalized, metrics, cancellationToken);
+            foreach (var alert in alerts)
+            {
+                _eventBus.PublishAlert(alert);
+            }
         }
 
         _logger.LogInformation("Pipeline stopped");

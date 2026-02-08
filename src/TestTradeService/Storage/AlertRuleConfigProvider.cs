@@ -1,39 +1,45 @@
-using TestTradeService.Interfaces;
+п»їusing TestTradeService.Interfaces;
 using TestTradeService.Models;
 
 namespace TestTradeService.Storage;
 
 /// <summary>
-/// In-memory провайдер параметров правил алертинга.
+/// In-memory РїСЂРѕРІР°Р№РґРµСЂ РїР°СЂР°РјРµС‚СЂРѕРІ РїСЂР°РІРёР» Р°Р»РµСЂС‚РёРЅРіР°.
 /// </summary>
-public sealed class AlertRuleConfigProvider : IAlertRuleConfigProvider
+public sealed class AlertRuleConfigProvider : IMutableAlertRuleConfigProvider
 {
-    private readonly IReadOnlyCollection<AlertRuleConfig> _configs;
+    private IReadOnlyCollection<AlertRuleConfig> _configs;
+    private readonly object _sync = new();
 
     /// <summary>
-    /// Инициализирует провайдер параметров правил.
+    /// РРЅРёС†РёР°Р»РёР·РёСЂСѓРµС‚ РїСЂРѕРІР°Р№РґРµСЂ РїР°СЂР°РјРµС‚СЂРѕРІ РїСЂР°РІРёР».
     /// </summary>
-    /// <param name="configs">Конфигурации правил.</param>
+    /// <param name="configs">РљРѕРЅС„РёРіСѓСЂР°С†РёРё РїСЂР°РІРёР».</param>
     public AlertRuleConfigProvider(IReadOnlyCollection<AlertRuleConfig> configs)
     {
         _configs = configs;
     }
 
     /// <summary>
-    /// Возвращает параметры правила для указанного источника и символа.
+    /// Р’РѕР·РІСЂР°С‰Р°РµС‚ РїР°СЂР°РјРµС‚СЂС‹ РїСЂР°РІРёР»Р° РґР»СЏ СѓРєР°Р·Р°РЅРЅРѕРіРѕ РёСЃС‚РѕС‡РЅРёРєР° Рё СЃРёРјРІРѕР»Р°.
     /// </summary>
-    /// <param name="ruleName">Имя правила.</param>
-    /// <param name="source">Имя источника данных.</param>
-    /// <param name="symbol">Символ инструмента.</param>
-    /// <returns>Параметры правила; пустой набор, если правило отключено или не найдено.</returns>
+    /// <param name="ruleName">РРјСЏ РїСЂР°РІРёР»Р°.</param>
+    /// <param name="source">РРјСЏ РёСЃС‚РѕС‡РЅРёРєР° РґР°РЅРЅС‹С….</param>
+    /// <param name="symbol">РЎРёРјРІРѕР» РёРЅСЃС‚СЂСѓРјРµРЅС‚Р°.</param>
+    /// <returns>РџР°СЂР°РјРµС‚СЂС‹ РїСЂР°РІРёР»Р°; РїСѓСЃС‚РѕР№ РЅР°Р±РѕСЂ, РµСЃР»Рё РїСЂР°РІРёР»Рѕ РѕС‚РєР»СЋС‡РµРЅРѕ РёР»Рё РЅРµ РЅР°Р№РґРµРЅРѕ.</returns>
     public IReadOnlyDictionary<string, string> GetParameters(string ruleName, string source, string symbol)
     {
         if (string.IsNullOrWhiteSpace(ruleName))
             return Empty();
 
         var exchange = ExtractExchange(source);
+        IReadOnlyCollection<AlertRuleConfig> snapshot;
+        lock (_sync)
+        {
+            snapshot = _configs;
+        }
 
-        var best = _configs
+        var best = snapshot
             .Where(c => c.Enabled && string.Equals(c.RuleName, ruleName, StringComparison.OrdinalIgnoreCase))
             .Where(c => c.Exchange is null || string.Equals(c.Exchange, exchange, StringComparison.OrdinalIgnoreCase))
             .Where(c => c.Symbol is null || string.Equals(c.Symbol, symbol, StringComparison.OrdinalIgnoreCase))
@@ -44,10 +50,28 @@ public sealed class AlertRuleConfigProvider : IAlertRuleConfigProvider
     }
 
     /// <summary>
-    /// Возвращает снимок всех конфигураций правил.
+    /// Р’РѕР·РІСЂР°С‰Р°РµС‚ СЃРЅРёРјРѕРє РІСЃРµС… РєРѕРЅС„РёРіСѓСЂР°С†РёР№ РїСЂР°РІРёР».
     /// </summary>
-    /// <returns>Набор конфигураций правил.</returns>
-    public IReadOnlyCollection<AlertRuleConfig> GetAll() => _configs;
+    /// <returns>РќР°Р±РѕСЂ РєРѕРЅС„РёРіСѓСЂР°С†РёР№ РїСЂР°РІРёР».</returns>
+    public IReadOnlyCollection<AlertRuleConfig> GetAll()
+    {
+        lock (_sync)
+        {
+            return _configs.ToArray();
+        }
+    }
+
+    /// <summary>
+    /// Р—Р°РјРµРЅСЏРµС‚ С‚РµРєСѓС‰РёР№ РЅР°Р±РѕСЂ РєРѕРЅС„РёРіСѓСЂР°С†РёР№ РїСЂР°РІРёР».
+    /// </summary>
+    /// <param name="configs">РќРѕРІС‹Р№ СЃРЅРёРјРѕРє РєРѕРЅС„РёРіСѓСЂР°С†РёР№ РїСЂР°РІРёР».</param>
+    public void Update(IReadOnlyCollection<AlertRuleConfig> configs)
+    {
+        lock (_sync)
+        {
+            _configs = configs;
+        }
+    }
 
     private static int Score(string? exchange, string? symbol)
     {

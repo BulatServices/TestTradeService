@@ -32,8 +32,10 @@ public sealed class AlertingService
     /// <summary>
     /// Проверяет правила по текущему тику и отправляет алерты в каналы уведомлений.
     /// </summary>
-    public async Task HandleAsync(NormalizedTick tick, MetricsSnapshot metrics, CancellationToken cancellationToken)
+    public async Task<IReadOnlyCollection<Alert>> HandleAsync(NormalizedTick tick, MetricsSnapshot metrics, CancellationToken cancellationToken)
     {
+        var emittedAlerts = new List<Alert>();
+
         foreach (var rule in _rules)
         {
             if (!rule.IsMatch(tick, metrics))
@@ -42,6 +44,7 @@ public sealed class AlertingService
             }
 
             var alert = rule.CreateAlert(tick, metrics);
+            emittedAlerts.Add(alert);
             await _storage.StoreAlertAsync(alert, cancellationToken);
 
             foreach (var notifier in _notifiers)
@@ -56,5 +59,7 @@ public sealed class AlertingService
                 }
             }
         }
+
+        return emittedAlerts;
     }
 }

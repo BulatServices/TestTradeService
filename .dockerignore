@@ -1,0 +1,21 @@
+﻿# Базовые артефакты
+.git
+.gitignore
+.idea
+.vscode
+.artifacts
+
+# .NET
+**/bin
+**/obj
+
+# Node
+**/node_modules
+src/TestTradeService.Web/dist
+src/TestTradeService.Web/.vite
+src/TestTradeService.Web/playwright-report
+src/TestTradeService.Web/test-results
+
+# OS
+**/.DS_Store
+Thumbs.db

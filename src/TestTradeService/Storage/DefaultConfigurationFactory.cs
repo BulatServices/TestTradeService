@@ -1,18 +1,18 @@
-using TestTradeService.Ingestion.Configuration;
+п»їusing TestTradeService.Ingestion.Configuration;
 using TestTradeService.Models;
 
 namespace TestTradeService.Storage;
 
 /// <summary>
-/// Построитель fallback-конфигурации по умолчанию.
+/// РџРѕСЃС‚СЂРѕРёС‚РµР»СЊ fallback-РєРѕРЅС„РёРіСѓСЂР°С†РёРё РїРѕ СѓРјРѕР»С‡Р°РЅРёСЋ.
 /// </summary>
 public static class DefaultConfigurationFactory
 {
     /// <summary>
-    /// Формирует конфигурацию инструментов по умолчанию.
+    /// Р¤РѕСЂРјРёСЂСѓРµС‚ РєРѕРЅС„РёРіСѓСЂР°С†РёСЋ РёРЅСЃС‚СЂСѓРјРµРЅС‚РѕРІ РїРѕ СѓРјРѕР»С‡Р°РЅРёСЋ.
     /// </summary>
-    /// <param name="demoMode">Признак демо-режима.</param>
-    /// <returns>Конфигурация инструментов.</returns>
+    /// <param name="demoMode">РџСЂРёР·РЅР°Рє РґРµРјРѕ-СЂРµР¶РёРјР°.</param>
+    /// <returns>РљРѕРЅС„РёРіСѓСЂР°С†РёСЏ РёРЅСЃС‚СЂСѓРјРµРЅС‚РѕРІ.</returns>
     public static MarketInstrumentsConfig CreateInstruments(bool demoMode)
     {
         return demoMode
@@ -24,6 +24,7 @@ public static class DefaultConfigurationFactory
                     {
                         Exchange = MarketExchange.Demo,
                         MarketType = MarketType.Spot,
+                        Transport = MarketDataSourceTransport.Rest,
                         Symbols = new[] { "BTC-USD", "ETH-USD", "SOL-USD" },
                         TargetUpdateInterval = TimeSpan.FromSeconds(2)
                     },
@@ -31,6 +32,7 @@ public static class DefaultConfigurationFactory
                     {
                         Exchange = MarketExchange.Demo,
                         MarketType = MarketType.Perp,
+                        Transport = MarketDataSourceTransport.WebSocket,
                         Symbols = new[] { "BTC-USD", "ETH-USD", "XRP-USD" },
                         TargetUpdateInterval = TimeSpan.FromMilliseconds(100)
                     }
@@ -44,6 +46,7 @@ public static class DefaultConfigurationFactory
                     {
                         Exchange = MarketExchange.Kraken,
                         MarketType = MarketType.Spot,
+                        Transport = MarketDataSourceTransport.WebSocket,
                         Symbols = new[] { "XBT/USD", "ETH/USD" },
                         TargetUpdateInterval = TimeSpan.FromSeconds(2)
                     },
@@ -51,6 +54,7 @@ public static class DefaultConfigurationFactory
                     {
                         Exchange = MarketExchange.Coinbase,
                         MarketType = MarketType.Spot,
+                        Transport = MarketDataSourceTransport.WebSocket,
                         Symbols = new[] { "BTC-USD", "ETH-USD", "SOL-USD" },
                         TargetUpdateInterval = TimeSpan.FromSeconds(2)
                     },
@@ -58,6 +62,7 @@ public static class DefaultConfigurationFactory
                     {
                         Exchange = MarketExchange.Bybit,
                         MarketType = MarketType.Spot,
+                        Transport = MarketDataSourceTransport.WebSocket,
                         Symbols = new[] { "BTCUSDT", "ETHUSDT", "SOLUSDT" },
                         TargetUpdateInterval = TimeSpan.FromSeconds(2)
                     }
@@ -66,9 +71,9 @@ public static class DefaultConfigurationFactory
     }
 
     /// <summary>
-    /// Формирует конфигурацию правил алертинга по умолчанию.
+    /// Р¤РѕСЂРјРёСЂСѓРµС‚ РєРѕРЅС„РёРіСѓСЂР°С†РёСЋ РїСЂР°РІРёР» Р°Р»РµСЂС‚РёРЅРіР° РїРѕ СѓРјРѕР»С‡Р°РЅРёСЋ.
     /// </summary>
-    /// <returns>Набор конфигураций правил.</returns>
+    /// <returns>РќР°Р±РѕСЂ РєРѕРЅС„РёРіСѓСЂР°С†РёР№ РїСЂР°РІРёР».</returns>
     public static IReadOnlyCollection<AlertRuleConfig> CreateAlertRules()
     {
         return

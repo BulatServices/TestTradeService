@@ -33,6 +33,7 @@ public sealed class PostgresConfigurationRepository : IConfigurationRepository
             select
                 exchange,
                 market_type as MarketType,
+                transport as Transport,
                 symbol,
                 target_update_interval_ms as TargetUpdateIntervalMs
             from meta.instruments
@@ -46,7 +47,7 @@ public sealed class PostgresConfigurationRepository : IConfigurationRepository
             : rows.Where(r => !string.Equals(r.Exchange, MarketExchange.Demo.ToString(), StringComparison.OrdinalIgnoreCase));
 
         var profiles = filtered
-            .GroupBy(r => $"{r.Exchange}::{r.MarketType}", StringComparer.OrdinalIgnoreCase)
+            .GroupBy(r => $"{r.Exchange}::{r.MarketType}::{r.Transport}", StringComparer.OrdinalIgnoreCase)
             .Select(group =>
             {
                 var first = group.First();
@@ -54,6 +55,7 @@ public sealed class PostgresConfigurationRepository : IConfigurationRepository
                 {
                     Exchange = Enum.Parse<MarketExchange>(first.Exchange, true),
                     MarketType = Enum.Parse<MarketType>(first.MarketType, true),
+                    Transport = Enum.Parse<MarketDataSourceTransport>(first.Transport, true),
                     Symbols = group.Select(x => x.Symbol).Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
                     TargetUpdateInterval = TimeSpan.FromMilliseconds(group.Max(x => x.TargetUpdateIntervalMs))
                 };
@@ -117,6 +119,7 @@ public sealed class PostgresConfigurationRepository : IConfigurationRepository
     {
         public required string Exchange { get; init; }
         public required string MarketType { get; init; }
+        public required string Transport { get; init; }
         public required string Symbol { get; init; }
         public required int TargetUpdateIntervalMs { get; init; }
     }

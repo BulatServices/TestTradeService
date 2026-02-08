@@ -57,3 +57,29 @@ npm run build
 - `VITE_API_BASE_URL`
 - `VITE_SIGNALR_URL`
 - `VITE_REQUEST_TIMEOUT_MS`
+
+## Docker / Docker Compose
+
+Запуск всех контейнеров:
+```bash
+docker compose up --build -d
+```
+
+Остановка:
+```bash
+docker compose down
+```
+
+Сервисы из `docker-compose.yml`:
+- `db` — TimescaleDB/PostgreSQL (`localhost:5432`)
+- `backend` — .NET worker (`TestTradeService`)
+- `web` — собранный frontend, раздаётся через Nginx (`http://localhost:5173`)
+
+Полезные команды:
+```bash
+docker compose logs -f backend
+docker compose logs -f db
+docker compose logs -f web
+```
+
+Важно: текущий проект `src/TestTradeService` запускается как background worker и не поднимает HTTP API/SignalR endpoint на `:5000`. Поэтому frontend в контейнере собирается с существующими URL-ами из конфигурации, но для полноценной работы API-страниц нужен отдельный backend с HTTP endpoint-ами.
