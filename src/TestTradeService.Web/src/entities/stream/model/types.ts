@@ -1,6 +1,7 @@
 ﻿import { z } from 'zod';
 
 export const tickEventSchema = z.object({
+  id: z.string().optional(),
   source: z.string(),
   exchange: z.string(),
   symbol: z.string(),

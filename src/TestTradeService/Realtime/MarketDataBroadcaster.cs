@@ -11,6 +11,7 @@ namespace TestTradeService.Realtime;
 /// </summary>
 public sealed class MarketDataBroadcaster : BackgroundService
 {
+    private long _tickSequence;
     private readonly IMarketDataEventBus _eventBus;
     private readonly IHubContext<MarketDataHub> _hubContext;
     private readonly MarketHubConnectionStateStore _stateStore;
@@ -77,6 +78,7 @@ public sealed class MarketDataBroadcaster : BackgroundService
 
         var payload = new
         {
+            id = CreateTickEventId(tick),
             source = tick.Source,
             exchange = ExtractExchange(tick.Source),
             symbol = tick.Symbol,
@@ -117,6 +119,12 @@ public sealed class MarketDataBroadcaster : BackgroundService
         }
 
         return state.Symbols.Any(x => string.Equals(x, symbol, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private string CreateTickEventId(NormalizedTick tick)
+    {
+        var sequence = Interlocked.Increment(ref _tickSequence);
+        return $"{tick.Source}-{tick.Symbol}-{tick.Timestamp:O}-{sequence}";
     }
 
     private static string ExtractExchange(string source)

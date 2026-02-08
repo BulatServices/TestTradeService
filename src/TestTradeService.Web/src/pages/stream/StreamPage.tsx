@@ -9,10 +9,15 @@ import { percentile } from '../../shared/lib/stats';
 
 const MAX_TICKS = 500;
 
+type StreamTickRow = TickEventDto & {
+  rowId: string;
+};
+
 export function StreamPage() {
   const { connection, reconnectCount } = useMarketHubContext();
-  const bufferRef = useRef(new RingBuffer<TickEventDto>(MAX_TICKS));
-  const [ticks, setTicks] = useState<TickEventDto[]>([]);
+  const bufferRef = useRef(new RingBuffer<StreamTickRow>(MAX_TICKS));
+  const rowIdRef = useRef(0);
+  const [ticks, setTicks] = useState<StreamTickRow[]>([]);
   const [paused, setPaused] = useState(false);
   const [exchangeFilter, setExchangeFilter] = useState<string>();
   const [symbolFilter, setSymbolFilter] = useState<string>();
@@ -43,7 +48,11 @@ export function StreamPage() {
       setDelays((prev) => [...prev.slice(-499), delayMs]);
 
       if (!paused) {
-        bufferRef.current.push(tick);
+        const rowId = tick.id ?? `${tick.source}-${tick.symbol}-${tick.timestamp}-${rowIdRef.current}`;
+        if (!tick.id) {
+          rowIdRef.current += 1;
+        }
+        bufferRef.current.push({ ...tick, rowId });
         setTicks(bufferRef.current.toArray());
       }
     };
@@ -174,7 +183,7 @@ export function StreamPage() {
 
         <Table
           size="small"
-          rowKey={(row) => `${row.source}-${row.symbol}-${row.timestamp}`}
+          rowKey="rowId"
           dataSource={filteredTicks.slice().reverse()}
           pagination={{ pageSize: 15 }}
           columns={[
