@@ -128,10 +128,10 @@ public sealed record PutAlertRulesRequest
     /// <summary>
     /// Новый список правил.
     /// </summary>
-    public required IReadOnlyCollection<AlertRuleConfigDto> Items { get; init; }
+    public IReadOnlyCollection<AlertRuleConfigDto> Items { get; init; } = Array.Empty<AlertRuleConfigDto>();
 
     /// <summary>
     /// Глобальный список каналов уведомлений по умолчанию.
     /// </summary>
-    public required IReadOnlyCollection<string> GlobalChannels { get; init; }
+    public IReadOnlyCollection<string> GlobalChannels { get; init; } = Array.Empty<string>();
 }
