@@ -69,7 +69,7 @@ builder.Services.AddCors(options =>
     });
 });
 
-builder.Services.AddSingleton<ChannelFactory>();
+builder.Services.AddSingleton<IChannelFactory, ChannelFactory>();
 builder.Services.AddSingleton(instrumentsConfig);
 builder.Services.AddSingleton(Options.Create(databaseOptions));
 
@@ -109,9 +109,9 @@ builder.Services.AddSingleton<IAlertRule, VolumeSpikeRule>();
 builder.Services.AddSingleton<INotifier, ConsoleNotifier>();
 builder.Services.AddSingleton<INotifier, FileNotifier>();
 builder.Services.AddSingleton<INotifier, EmailStubNotifier>();
-builder.Services.AddSingleton<AlertingService>();
+builder.Services.AddSingleton<IAlertingService, AlertingService>();
 builder.Services.AddSingleton<IMarketDataEventBus, MarketDataEventBus>();
-builder.Services.AddSingleton<DataPipeline>();
+builder.Services.AddSingleton<IDataPipeline, DataPipeline>();
 builder.Services.AddSingleton<TradeCursorStore>();
 builder.Services.AddSingleton<ISourceConfigService, SourceConfigService>();
 

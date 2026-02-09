@@ -10,17 +10,23 @@ namespace TestTradeService.Services;
 /// <summary>
 /// Основной конвейер обработки рыночных данных.
 /// </summary>
-public sealed class DataPipeline
+public sealed class DataPipeline : IDataPipeline
 {
     private readonly TickNormalizer _normalizer = new();
     private readonly TickFilter _filter;
     private readonly TickDeduplicator _deduplicator = new();
     private readonly IAggregationService _aggregationService;
     private readonly IStorage _storage;
-    private readonly AlertingService _alerting;
+    private readonly IAlertingService _alerting;
     private readonly IMonitoringService _monitoring;
     private readonly IMarketDataEventBus _eventBus;
     private readonly ILogger<DataPipeline> _logger;
+    private long _consumedTickCount;
+
+    /// <summary>
+    /// Возвращает количество тиков, считанных конвейером из входного канала.
+    /// </summary>
+    public long ConsumedTickCount => Interlocked.Read(ref _consumedTickCount);
 
     /// <summary>
     /// Инициализирует конвейер обработки тиков.
@@ -35,7 +41,7 @@ public sealed class DataPipeline
     public DataPipeline(
         IAggregationService aggregationService,
         IStorage storage,
-        AlertingService alerting,
+        IAlertingService alerting,
         IMonitoringService monitoring,
         IMarketDataEventBus eventBus,
         MarketInstrumentsConfig instrumentsConfig,
@@ -60,6 +66,7 @@ public sealed class DataPipeline
     {
         await foreach (var tick in reader.ReadAllAsync(cancellationToken))
         {
+            Interlocked.Increment(ref _consumedTickCount);
             await _storage.StoreRawTickAsync(BuildRawTick(tick), cancellationToken);
 
             var normalized = _normalizer.Normalize(tick);

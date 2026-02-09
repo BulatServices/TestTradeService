@@ -7,7 +7,7 @@ namespace TestTradeService.Services;
 /// <summary>
 /// Оркестратор правил алертинга и каналов доставки уведомлений.
 /// </summary>
-public sealed class AlertingService
+public sealed class AlertingService : IAlertingService
 {
     private readonly IEnumerable<IAlertRule> _rules;
     private readonly IReadOnlyDictionary<string, INotifier> _notifiersByName;

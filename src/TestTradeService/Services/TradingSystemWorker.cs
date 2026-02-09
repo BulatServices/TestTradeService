@@ -11,20 +11,30 @@ namespace TestTradeService.Services;
 /// </summary>
 public sealed class TradingSystemWorker : BackgroundService, IRuntimeReconfigurationService
 {
-    private readonly ChannelFactory _channelFactory;
+    private readonly IChannelFactory _channelFactory;
     private readonly IReadOnlyList<IMarketDataSource> _sources;
-    private readonly DataPipeline _pipeline;
+    private readonly IDataPipeline _pipeline;
     private readonly IStorage _storage;
     private readonly IMonitoringService _monitoring;
     private readonly IMarketDataEventBus _eventBus;
     private readonly ILogger<TradingSystemWorker> _logger;
     private readonly SemaphoreSlim _sourceLifecycleLock = new(1, 1);
+    private readonly TimeSpan _pipelineDrainTimeout;
 
     private Channel<Tick>? _channel;
     private ChannelWriter<Tick>? _writer;
     private CancellationTokenSource? _sourcesCts;
     private List<Task> _sourceTasks = [];
     private CancellationToken _hostToken;
+    private Task? _pipelineTask;
+    private Task? _monitoringTask;
+    private long _acceptedTickCount;
+    private long _droppedTicksOnShutdown;
+
+    /// <summary>
+    /// Возвращает количество тиков, потерянных при остановке из-за таймаута дренажа конвейера.
+    /// </summary>
+    public long DroppedTicksOnShutdown => Interlocked.Read(ref _droppedTicksOnShutdown);
 
     /// <summary>
     /// Инициализирует воркер торговой системы.
@@ -36,14 +46,16 @@ public sealed class TradingSystemWorker : BackgroundService, IRuntimeReconfigura
     /// <param name="monitoring">Сервис мониторинга.</param>
     /// <param name="eventBus">Шина событий рыночного потока.</param>
     /// <param name="logger">Логгер воркера.</param>
+    /// <param name="pipelineDrainTimeout">Максимальное время ожидания дренажа конвейера при остановке.</param>
     public TradingSystemWorker(
-        ChannelFactory channelFactory,
+        IChannelFactory channelFactory,
         IEnumerable<IMarketDataSource> sources,
-        DataPipeline pipeline,
+        IDataPipeline pipeline,
         IStorage storage,
         IMonitoringService monitoring,
         IMarketDataEventBus eventBus,
-        ILogger<TradingSystemWorker> logger)
+        ILogger<TradingSystemWorker> logger,
+        TimeSpan? pipelineDrainTimeout = null)
     {
         _channelFactory = channelFactory;
         _pipeline = pipeline;
@@ -51,6 +63,7 @@ public sealed class TradingSystemWorker : BackgroundService, IRuntimeReconfigura
         _monitoring = monitoring;
         _eventBus = eventBus;
         _logger = logger;
+        _pipelineDrainTimeout = pipelineDrainTimeout ?? TimeSpan.FromSeconds(30);
 
         _sources = sources
             .OrderBy(s => s.Exchange)
@@ -71,15 +84,17 @@ public sealed class TradingSystemWorker : BackgroundService, IRuntimeReconfigura
         _hostToken = stoppingToken;
         _channel = _channelFactory.CreateTickChannel();
         _writer = _channel.Writer;
+        Interlocked.Exchange(ref _acceptedTickCount, 0);
+        Interlocked.Exchange(ref _droppedTicksOnShutdown, 0);
 
         await StartSourcesAsync(stoppingToken);
 
-        var pipelineTask = _pipeline.StartAsync(_channel.Reader, stoppingToken);
-        var monitoringTask = ReportMonitoringAsync(stoppingToken);
+        _pipelineTask = _pipeline.StartAsync(_channel.Reader, stoppingToken);
+        _monitoringTask = ReportMonitoringAsync(stoppingToken);
 
         try
         {
-            await Task.WhenAll(pipelineTask, monitoringTask);
+            await Task.WhenAll(_pipelineTask, _monitoringTask);
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
@@ -121,12 +136,21 @@ public sealed class TradingSystemWorker : BackgroundService, IRuntimeReconfigura
         try
         {
             await StopSourcesCoreAsync(cancellationToken);
+
+            try
+            {
+                _writer?.Complete();
+            }
+            catch (ChannelClosedException)
+            {
+            }
         }
         finally
         {
             _sourceLifecycleLock.Release();
         }
 
+        await DrainPipelineOnShutdownAsync(cancellationToken);
         await base.StopAsync(cancellationToken);
     }
 
@@ -152,9 +176,10 @@ public sealed class TradingSystemWorker : BackgroundService, IRuntimeReconfigura
     {
         _sourcesCts = CancellationTokenSource.CreateLinkedTokenSource(hostToken);
         var sourceToken = _sourcesCts.Token;
+        var countingWriter = new CountingChannelWriter(writer, () => Interlocked.Increment(ref _acceptedTickCount));
 
         _sourceTasks = _sources
-            .Select(source => Task.Run(() => RunSourceAsync(source, writer, sourceToken), sourceToken))
+            .Select(source => Task.Run(() => RunSourceAsync(source, countingWriter, sourceToken), sourceToken))
             .ToList();
 
         return Task.CompletedTask;
@@ -271,6 +296,70 @@ public sealed class TradingSystemWorker : BackgroundService, IRuntimeReconfigura
             }
 
             await Task.Delay(TimeSpan.FromSeconds(10), cancellationToken);
+        }
+    }
+
+    private async Task DrainPipelineOnShutdownAsync(CancellationToken cancellationToken)
+    {
+        if (_pipelineTask is null)
+        {
+            return;
+        }
+
+        using var drainCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        drainCts.CancelAfter(_pipelineDrainTimeout);
+
+        try
+        {
+            await _pipelineTask.WaitAsync(drainCts.Token);
+            Interlocked.Exchange(ref _droppedTicksOnShutdown, 0);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            var accepted = Interlocked.Read(ref _acceptedTickCount);
+            var consumed = _pipeline.ConsumedTickCount;
+            var dropped = Math.Max(0, accepted - consumed);
+            Interlocked.Exchange(ref _droppedTicksOnShutdown, dropped);
+            _logger.LogWarning(
+                "Pipeline drain timeout reached after {Timeout}. accepted={Accepted} consumed={Consumed} dropped={Dropped}",
+                _pipelineDrainTimeout,
+                accepted,
+                consumed,
+                dropped);
+        }
+    }
+
+    private sealed class CountingChannelWriter : ChannelWriter<Tick>
+    {
+        private readonly ChannelWriter<Tick> _inner;
+        private readonly Action _onWrite;
+
+        public CountingChannelWriter(ChannelWriter<Tick> inner, Action onWrite)
+        {
+            _inner = inner;
+            _onWrite = onWrite;
+        }
+
+        public override bool TryComplete(Exception? error = null) => _inner.TryComplete(error);
+
+        public override bool TryWrite(Tick item)
+        {
+            var written = _inner.TryWrite(item);
+            if (written)
+            {
+                _onWrite();
+            }
+
+            return written;
+        }
+
+        public override ValueTask<bool> WaitToWriteAsync(CancellationToken cancellationToken = default)
+            => _inner.WaitToWriteAsync(cancellationToken);
+
+        public override async ValueTask WriteAsync(Tick item, CancellationToken cancellationToken = default)
+        {
+            await _inner.WriteAsync(item, cancellationToken);
+            _onWrite();
         }
     }
 }

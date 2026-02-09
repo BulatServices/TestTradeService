@@ -1,4 +1,5 @@
 using System.Threading.Channels;
+using TestTradeService.Interfaces;
 using TestTradeService.Models;
 
 namespace TestTradeService.Services;
@@ -6,7 +7,7 @@ namespace TestTradeService.Services;
 /// <summary>
 /// Фабрика каналов для потоковой обработки данных.
 /// </summary>
-public sealed class ChannelFactory
+public sealed class ChannelFactory : IChannelFactory
 {
     /// <summary>
     /// Создает bounded-канал для сырых тиков.
