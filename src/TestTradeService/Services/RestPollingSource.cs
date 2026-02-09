@@ -139,9 +139,27 @@ public abstract class RestPollingSource : IMarketDataSource
                 var ticks = await PollBatchAsync(symbolsBatch, cancellationToken);
                 foreach (var tick in ticks)
                 {
+                    var metadata = new Dictionary<string, string>(StringComparer.Ordinal)
+                    {
+                        ["transport"] = MarketDataSourceTransport.Rest.ToString(),
+                        ["source"] = Name
+                    };
+
+                    if (tick.RawMetadata is not null)
+                    {
+                        foreach (var pair in tick.RawMetadata)
+                        {
+                            metadata[pair.Key] = pair.Value;
+                        }
+                    }
+
                     var normalized = tick with
                     {
-                        Source = Name
+                        Source = Name,
+                        RawExchange = string.IsNullOrWhiteSpace(tick.RawExchange) ? Exchange.ToString() : tick.RawExchange,
+                        RawMarketType = string.IsNullOrWhiteSpace(tick.RawMarketType) ? MarketType.Spot.ToString() : tick.RawMarketType,
+                        RawReceivedAt = tick.RawReceivedAt ?? DateTimeOffset.UtcNow,
+                        RawMetadata = metadata
                     };
 
                     if (!_tradeCursorStore.ShouldEmit(Exchange, normalized.Symbol, normalized.Timestamp, normalized.TradeId, normalized.Price, normalized.Volume))

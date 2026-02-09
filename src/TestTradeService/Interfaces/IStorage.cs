@@ -1,63 +1,79 @@
-using TestTradeService.Models;
+п»їusing TestTradeService.Models;
 
 namespace TestTradeService.Interfaces;
 
 /// <summary>
-/// Абстракция слоя хранения данных торговой системы.
+/// РђР±СЃС‚СЂР°РєС†РёСЏ СЃР»РѕСЏ С…СЂР°РЅРµРЅРёСЏ РґР°РЅРЅС‹С… С‚РѕСЂРіРѕРІРѕР№ СЃРёСЃС‚РµРјС‹.
 /// </summary>
 public interface IStorage
 {
     /// <summary>
-    /// Сохраняет raw-тик в хранилище.
+    /// РЎРѕС…СЂР°РЅСЏРµС‚ СЃС‹СЂРѕР№ С‚РёРє РІРјРµСЃС‚Рµ СЃ РёСЃС…РѕРґРЅС‹Рј payload.
     /// </summary>
-    /// <param name="tick">Нормализованный тик.</param>
-    /// <param name="cancellationToken">Токен отмены.</param>
-    /// <returns>Задача сохранения тика.</returns>
+    /// <param name="rawTick">РЎС‹СЂРѕР№ С‚РёРє РґРѕ РЅРѕСЂРјР°Р»РёР·Р°С†РёРё.</param>
+    /// <param name="cancellationToken">РўРѕРєРµРЅ РѕС‚РјРµРЅС‹.</param>
+    /// <returns>Р—Р°РґР°С‡Р° СЃРѕС…СЂР°РЅРµРЅРёСЏ СЃС‹СЂРѕРіРѕ С‚РёРєР°.</returns>
+    Task StoreRawTickAsync(RawTick rawTick, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// РЎРѕС…СЂР°РЅСЏРµС‚ raw-С‚РёРє РІ С…СЂР°РЅРёР»РёС‰Рµ.
+    /// </summary>
+    /// <param name="tick">РќРѕСЂРјР°Р»РёР·РѕРІР°РЅРЅС‹Р№ С‚РёРє.</param>
+    /// <param name="cancellationToken">РўРѕРєРµРЅ РѕС‚РјРµРЅС‹.</param>
+    /// <returns>Р—Р°РґР°С‡Р° СЃРѕС…СЂР°РЅРµРЅРёСЏ С‚РёРєР°.</returns>
     Task StoreTickAsync(NormalizedTick tick, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Сохраняет агрегированную свечу.
+    /// РЎРѕС…СЂР°РЅСЏРµС‚ Р°РіСЂРµРіРёСЂРѕРІР°РЅРЅСѓСЋ СЃРІРµС‡Сѓ.
     /// </summary>
-    /// <param name="candle">Агрегированная свеча.</param>
-    /// <param name="cancellationToken">Токен отмены.</param>
-    /// <returns>Задача сохранения свечи.</returns>
+    /// <param name="candle">РђРіСЂРµРіРёСЂРѕРІР°РЅРЅР°СЏ СЃРІРµС‡Р°.</param>
+    /// <param name="cancellationToken">РўРѕРєРµРЅ РѕС‚РјРµРЅС‹.</param>
+    /// <returns>Р—Р°РґР°С‡Р° СЃРѕС…СЂР°РЅРµРЅРёСЏ СЃРІРµС‡Рё.</returns>
     Task StoreAggregateAsync(AggregatedCandle candle, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Сохраняет метаданные инструмента.
+    /// РЎРѕС…СЂР°РЅСЏРµС‚ РјРµС‚Р°РґР°РЅРЅС‹Рµ РёРЅСЃС‚СЂСѓРјРµРЅС‚Р°.
     /// </summary>
-    /// <param name="metadata">Метаданные инструмента.</param>
-    /// <param name="cancellationToken">Токен отмены.</param>
-    /// <returns>Задача сохранения метаданных инструмента.</returns>
+    /// <param name="metadata">РњРµС‚Р°РґР°РЅРЅС‹Рµ РёРЅСЃС‚СЂСѓРјРµРЅС‚Р°.</param>
+    /// <param name="cancellationToken">РўРѕРєРµРЅ РѕС‚РјРµРЅС‹.</param>
+    /// <returns>Р—Р°РґР°С‡Р° СЃРѕС…СЂР°РЅРµРЅРёСЏ РјРµС‚Р°РґР°РЅРЅС‹С… РёРЅСЃС‚СЂСѓРјРµРЅС‚Р°.</returns>
     Task StoreInstrumentAsync(InstrumentMetadata metadata, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Сохраняет статус источника данных.
+    /// РЎРѕС…СЂР°РЅСЏРµС‚ Р°РєС‚СѓР°Р»СЊРЅС‹Р№ СЃС‚Р°С‚СѓСЃ РёСЃС‚РѕС‡РЅРёРєР° РґР°РЅРЅС‹С….
     /// </summary>
-    /// <param name="status">Статус источника данных.</param>
-    /// <param name="cancellationToken">Токен отмены.</param>
-    /// <returns>Задача сохранения статуса источника.</returns>
+    /// <param name="status">РЎС‚Р°С‚СѓСЃ РёСЃС‚РѕС‡РЅРёРєР° РґР°РЅРЅС‹С….</param>
+    /// <param name="cancellationToken">РўРѕРєРµРЅ РѕС‚РјРµРЅС‹.</param>
+    /// <returns>Р—Р°РґР°С‡Р° СЃРѕС…СЂР°РЅРµРЅРёСЏ СЃС‚Р°С‚СѓСЃР° РёСЃС‚РѕС‡РЅРёРєР°.</returns>
     Task StoreSourceStatusAsync(SourceStatus status, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Сохраняет алерт.
+    /// РЎРѕС…СЂР°РЅСЏРµС‚ СЃРѕР±С‹С‚РёРµ РёР·РјРµРЅРµРЅРёСЏ СЃС‚Р°С‚СѓСЃР° РёСЃС‚РѕС‡РЅРёРєР° РґР°РЅРЅС‹С….
     /// </summary>
-    /// <param name="alert">Событие алертинга.</param>
-    /// <param name="cancellationToken">Токен отмены.</param>
-    /// <returns>Задача сохранения алерта.</returns>
+    /// <param name="status">РЎС‚Р°С‚СѓСЃ РёСЃС‚РѕС‡РЅРёРєР° РґР°РЅРЅС‹С… РЅР° РјРѕРјРµРЅС‚ РёР·РјРµРЅРµРЅРёСЏ.</param>
+    /// <param name="cancellationToken">РўРѕРєРµРЅ РѕС‚РјРµРЅС‹.</param>
+    /// <returns>Р—Р°РґР°С‡Р° СЃРѕС…СЂР°РЅРµРЅРёСЏ СЃРѕР±С‹С‚РёСЏ СЃС‚Р°С‚СѓСЃР° РёСЃС‚РѕС‡РЅРёРєР°.</returns>
+    Task StoreSourceStatusEventAsync(SourceStatus status, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// РЎРѕС…СЂР°РЅСЏРµС‚ Р°Р»РµСЂС‚.
+    /// </summary>
+    /// <param name="alert">РЎРѕР±С‹С‚РёРµ Р°Р»РµСЂС‚РёРЅРіР°.</param>
+    /// <param name="cancellationToken">РўРѕРєРµРЅ РѕС‚РјРµРЅС‹.</param>
+    /// <returns>Р—Р°РґР°С‡Р° СЃРѕС…СЂР°РЅРµРЅРёСЏ Р°Р»РµСЂС‚Р°.</returns>
     Task StoreAlertAsync(Alert alert, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Загружает метаданные активных инструментов.
+    /// Р—Р°РіСЂСѓР¶Р°РµС‚ РјРµС‚Р°РґР°РЅРЅС‹Рµ Р°РєС‚РёРІРЅС‹С… РёРЅСЃС‚СЂСѓРјРµРЅС‚РѕРІ.
     /// </summary>
-    /// <param name="cancellationToken">Токен отмены.</param>
-    /// <returns>Набор метаданных инструментов.</returns>
+    /// <param name="cancellationToken">РўРѕРєРµРЅ РѕС‚РјРµРЅС‹.</param>
+    /// <returns>РќР°Р±РѕСЂ РјРµС‚Р°РґР°РЅРЅС‹С… РёРЅСЃС‚СЂСѓРјРµРЅС‚РѕРІ.</returns>
     Task<IReadOnlyCollection<InstrumentMetadata>> GetInstrumentsAsync(CancellationToken cancellationToken);
 
     /// <summary>
-    /// Загружает конфигурации правил алертинга.
+    /// Р—Р°РіСЂСѓР¶Р°РµС‚ РєРѕРЅС„РёРіСѓСЂР°С†РёРё РїСЂР°РІРёР» Р°Р»РµСЂС‚РёРЅРіР°.
     /// </summary>
-    /// <param name="cancellationToken">Токен отмены.</param>
-    /// <returns>Набор конфигураций правил.</returns>
+    /// <param name="cancellationToken">РўРѕРєРµРЅ РѕС‚РјРµРЅС‹.</param>
+    /// <returns>РќР°Р±РѕСЂ РєРѕРЅС„РёРіСѓСЂР°С†РёР№ РїСЂР°РІРёР».</returns>
     Task<IReadOnlyCollection<AlertRuleConfig>> GetAlertRulesAsync(CancellationToken cancellationToken);
 }

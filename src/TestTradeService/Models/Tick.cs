@@ -1,4 +1,4 @@
-namespace TestTradeService.Models;
+﻿namespace TestTradeService.Models;
 
 /// <summary>
 /// Сырой тик, полученный от источника биржевых данных.
@@ -34,4 +34,29 @@ public sealed record Tick
     /// Внешний идентификатор сделки (если предоставляется источником).
     /// </summary>
     public string? TradeId { get; init; }
+
+    /// <summary>
+    /// Биржа, из которой получен тик, для сохранения сырого payload.
+    /// </summary>
+    public string? RawExchange { get; init; }
+
+    /// <summary>
+    /// Тип рынка сырого тика (например, Spot или Perp).
+    /// </summary>
+    public string? RawMarketType { get; init; }
+
+    /// <summary>
+    /// Время получения сырого payload.
+    /// </summary>
+    public DateTimeOffset? RawReceivedAt { get; init; }
+
+    /// <summary>
+    /// Исходный payload в текстовом виде.
+    /// </summary>
+    public string? RawPayload { get; init; }
+
+    /// <summary>
+    /// Дополнительные метаданные источника для сырого payload.
+    /// </summary>
+    public IReadOnlyDictionary<string, string>? RawMetadata { get; init; }
 }

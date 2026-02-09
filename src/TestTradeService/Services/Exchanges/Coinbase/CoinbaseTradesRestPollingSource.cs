@@ -42,8 +42,17 @@ public sealed class CoinbaseTradesRestPollingSource : RestPollingSource
             using var response = await _httpClient.GetAsync(endpoint, ct);
             response.EnsureSuccessStatusCode();
 
+            var receivedAt = DateTimeOffset.UtcNow;
             var payload = await response.Content.ReadAsStringAsync(ct);
-            var ticks = CoinbaseTradesParsing.ParseRestTrades(symbol, payload);
+            var ticks = CoinbaseTradesParsing.ParseRestTrades(symbol, payload)
+                .Select(tick => tick with
+                {
+                    RawExchange = Exchange.ToString(),
+                    RawMarketType = MarketType.Spot.ToString(),
+                    RawReceivedAt = receivedAt,
+                    RawPayload = payload
+                })
+                .ToList();
 
             var lastSeen = _lastTradeIdBySymbol.TryGetValue(symbol, out var last) ? last : 0L;
             var newTicks = ticks
@@ -76,4 +85,3 @@ public sealed class CoinbaseTradesRestPollingSource : RestPollingSource
         return long.TryParse(tradeId, out id);
     }
 }
-

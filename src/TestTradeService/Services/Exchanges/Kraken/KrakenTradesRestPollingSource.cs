@@ -46,9 +46,16 @@ public sealed class KrakenTradesRestPollingSource : RestPollingSource
             using var response = await _httpClient.GetAsync(TradesEndpoint + query, ct);
             response.EnsureSuccessStatusCode();
 
+            var receivedAt = DateTimeOffset.UtcNow;
             var payload = await response.Content.ReadAsStringAsync(ct);
             var parsed = KrakenTradesParsing.ParseRestTrades(symbol, payload, out var last);
-            ticks.AddRange(parsed);
+            ticks.AddRange(parsed.Select(tick => tick with
+            {
+                RawExchange = Exchange.ToString(),
+                RawMarketType = MarketType.Spot.ToString(),
+                RawReceivedAt = receivedAt,
+                RawPayload = payload
+            }));
 
             if (!string.IsNullOrWhiteSpace(last))
                 _sinceBySymbol[symbol] = last!;

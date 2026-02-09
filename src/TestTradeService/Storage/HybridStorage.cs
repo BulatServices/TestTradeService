@@ -1,11 +1,12 @@
-using Dapper;
+п»їusing Dapper;
+using System.Text.Json;
 using TestTradeService.Interfaces;
 using TestTradeService.Models;
 
 namespace TestTradeService.Storage;
 
 /// <summary>
-/// Двухконтурная реализация хранилища: PostgreSQL для метаданных и TimescaleDB для таймсерий.
+/// Р”РІСѓС…РєРѕРЅС‚СѓСЂРЅР°СЏ СЂРµР°Р»РёР·Р°С†РёСЏ С…СЂР°РЅРёР»РёС‰Р°: PostgreSQL РґР»СЏ РјРµС‚Р°РґР°РЅРЅС‹С… Рё TimescaleDB РґР»СЏ С‚Р°Р№РјСЃРµСЂРёР№.
 /// </summary>
 public sealed class HybridStorage : IStorage
 {
@@ -13,10 +14,10 @@ public sealed class HybridStorage : IStorage
     private readonly TimeseriesDataSource _timeseriesDataSource;
 
     /// <summary>
-    /// Инициализирует двухконтурное хранилище.
+    /// РРЅРёС†РёР°Р»РёР·РёСЂСѓРµС‚ РґРІСѓС…РєРѕРЅС‚СѓСЂРЅРѕРµ С…СЂР°РЅРёР»РёС‰Рµ.
     /// </summary>
-    /// <param name="metadataDataSource">Источник подключений для метаданных.</param>
-    /// <param name="timeseriesDataSource">Источник подключений для таймсерий.</param>
+    /// <param name="metadataDataSource">РСЃС‚РѕС‡РЅРёРє РїРѕРґРєР»СЋС‡РµРЅРёР№ РґР»СЏ РјРµС‚Р°РґР°РЅРЅС‹С….</param>
+    /// <param name="timeseriesDataSource">РСЃС‚РѕС‡РЅРёРє РїРѕРґРєР»СЋС‡РµРЅРёР№ РґР»СЏ С‚Р°Р№РјСЃРµСЂРёР№.</param>
     public HybridStorage(MetadataDataSource metadataDataSource, TimeseriesDataSource timeseriesDataSource)
     {
         _metadataDataSource = metadataDataSource;
@@ -24,11 +25,73 @@ public sealed class HybridStorage : IStorage
     }
 
     /// <summary>
-    /// Сохраняет raw-тик в TimescaleDB.
+    /// РЎРѕС…СЂР°РЅСЏРµС‚ СЃС‹СЂРѕР№ С‚РёРє РІ TimescaleDB.
     /// </summary>
-    /// <param name="tick">Нормализованный тик.</param>
-    /// <param name="cancellationToken">Токен отмены.</param>
-    /// <returns>Задача сохранения тика.</returns>
+    /// <param name="rawTick">РЎС‹СЂРѕР№ С‚РёРє РґРѕ РЅРѕСЂРјР°Р»РёР·Р°С†РёРё.</param>
+    /// <param name="cancellationToken">РўРѕРєРµРЅ РѕС‚РјРµРЅС‹.</param>
+    /// <returns>Р—Р°РґР°С‡Р° СЃРѕС…СЂР°РЅРµРЅРёСЏ СЃС‹СЂРѕРіРѕ С‚РёРєР°.</returns>
+    public async Task StoreRawTickAsync(RawTick rawTick, CancellationToken cancellationToken)
+    {
+        const string sql = """
+            insert into market.raw_ticks
+            (
+                "time",
+                received_at,
+                exchange,
+                source,
+                symbol,
+                market_type,
+                trade_id,
+                price,
+                volume,
+                payload,
+                metadata,
+                fingerprint
+            )
+            values
+            (
+                @Time,
+                @ReceivedAt,
+                @Exchange,
+                @Source,
+                @Symbol,
+                @MarketType,
+                @TradeId,
+                @Price,
+                @Volume,
+                cast(@Payload as jsonb),
+                cast(@Metadata as jsonb),
+                @Fingerprint
+            )
+            on conflict (fingerprint, "time") do nothing
+            """;
+
+        var payload = new
+        {
+            Time = rawTick.EventTimestamp,
+            rawTick.ReceivedAt,
+            rawTick.Exchange,
+            rawTick.Source,
+            rawTick.Symbol,
+            rawTick.MarketType,
+            rawTick.TradeId,
+            rawTick.Price,
+            rawTick.Volume,
+            Payload = SerializePayload(rawTick.Payload),
+            Metadata = SerializeMetadata(rawTick.Metadata),
+            Fingerprint = BuildRawFingerprint(rawTick)
+        };
+
+        await using var connection = await _timeseriesDataSource.DataSource.OpenConnectionAsync(cancellationToken);
+        await connection.ExecuteAsync(new CommandDefinition(sql, payload, cancellationToken: cancellationToken));
+    }
+
+    /// <summary>
+    /// РЎРѕС…СЂР°РЅСЏРµС‚ raw-С‚РёРє РІ TimescaleDB.
+    /// </summary>
+    /// <param name="tick">РќРѕСЂРјР°Р»РёР·РѕРІР°РЅРЅС‹Р№ С‚РёРє.</param>
+    /// <param name="cancellationToken">РўРѕРєРµРЅ РѕС‚РјРµРЅС‹.</param>
+    /// <returns>Р—Р°РґР°С‡Р° СЃРѕС…СЂР°РЅРµРЅРёСЏ С‚РёРєР°.</returns>
     public async Task StoreTickAsync(NormalizedTick tick, CancellationToken cancellationToken)
     {
         const string sql = """
@@ -42,11 +105,11 @@ public sealed class HybridStorage : IStorage
     }
 
     /// <summary>
-    /// Сохраняет агрегированную свечу в TimescaleDB.
+    /// РЎРѕС…СЂР°РЅСЏРµС‚ Р°РіСЂРµРіРёСЂРѕРІР°РЅРЅСѓСЋ СЃРІРµС‡Сѓ РІ TimescaleDB.
     /// </summary>
-    /// <param name="candle">Агрегированная свеча.</param>
-    /// <param name="cancellationToken">Токен отмены.</param>
-    /// <returns>Задача сохранения свечи.</returns>
+    /// <param name="candle">РђРіСЂРµРіРёСЂРѕРІР°РЅРЅР°СЏ СЃРІРµС‡Р°.</param>
+    /// <param name="cancellationToken">РўРѕРєРµРЅ РѕС‚РјРµРЅС‹.</param>
+    /// <returns>Р—Р°РґР°С‡Р° СЃРѕС…СЂР°РЅРµРЅРёСЏ СЃРІРµС‡Рё.</returns>
     public async Task StoreAggregateAsync(AggregatedCandle candle, CancellationToken cancellationToken)
     {
         const string sql = """
@@ -81,11 +144,11 @@ public sealed class HybridStorage : IStorage
     }
 
     /// <summary>
-    /// Сохраняет метаданные инструмента в PostgreSQL.
+    /// РЎРѕС…СЂР°РЅСЏРµС‚ РјРµС‚Р°РґР°РЅРЅС‹Рµ РёРЅСЃС‚СЂСѓРјРµРЅС‚Р° РІ PostgreSQL.
     /// </summary>
-    /// <param name="metadata">Метаданные инструмента.</param>
-    /// <param name="cancellationToken">Токен отмены.</param>
-    /// <returns>Задача сохранения метаданных.</returns>
+    /// <param name="metadata">РњРµС‚Р°РґР°РЅРЅС‹Рµ РёРЅСЃС‚СЂСѓРјРµРЅС‚Р°.</param>
+    /// <param name="cancellationToken">РўРѕРєРµРЅ РѕС‚РјРµРЅС‹.</param>
+    /// <returns>Р—Р°РґР°С‡Р° СЃРѕС…СЂР°РЅРµРЅРёСЏ РјРµС‚Р°РґР°РЅРЅС‹С….</returns>
     public async Task StoreInstrumentAsync(InstrumentMetadata metadata, CancellationToken cancellationToken)
     {
         const string sql = """
@@ -159,11 +222,11 @@ public sealed class HybridStorage : IStorage
     }
 
     /// <summary>
-    /// Сохраняет статус источника данных в PostgreSQL.
+    /// РЎРѕС…СЂР°РЅСЏРµС‚ СЃС‚Р°С‚СѓСЃ РёСЃС‚РѕС‡РЅРёРєР° РґР°РЅРЅС‹С… РІ PostgreSQL.
     /// </summary>
-    /// <param name="status">Статус источника.</param>
-    /// <param name="cancellationToken">Токен отмены.</param>
-    /// <returns>Задача сохранения статуса.</returns>
+    /// <param name="status">РЎС‚Р°С‚СѓСЃ РёСЃС‚РѕС‡РЅРёРєР°.</param>
+    /// <param name="cancellationToken">РўРѕРєРµРЅ РѕС‚РјРµРЅС‹.</param>
+    /// <returns>Р—Р°РґР°С‡Р° СЃРѕС…СЂР°РЅРµРЅРёСЏ СЃС‚Р°С‚СѓСЃР°.</returns>
     public async Task StoreSourceStatusAsync(SourceStatus status, CancellationToken cancellationToken)
     {
         const string sql = """
@@ -190,11 +253,37 @@ public sealed class HybridStorage : IStorage
     }
 
     /// <summary>
-    /// Сохраняет алерт в PostgreSQL.
+    /// РЎРѕС…СЂР°РЅСЏРµС‚ СЃРѕР±С‹С‚РёРµ РёР·РјРµРЅРµРЅРёСЏ СЃС‚Р°С‚СѓСЃР° РёСЃС‚РѕС‡РЅРёРєР° РґР°РЅРЅС‹С… РІ PostgreSQL.
     /// </summary>
-    /// <param name="alert">Алерт.</param>
-    /// <param name="cancellationToken">Токен отмены.</param>
-    /// <returns>Задача сохранения алерта.</returns>
+    /// <param name="status">РЎС‚Р°С‚СѓСЃ РёСЃС‚РѕС‡РЅРёРєР°.</param>
+    /// <param name="cancellationToken">РўРѕРєРµРЅ РѕС‚РјРµРЅС‹.</param>
+    /// <returns>Р—Р°РґР°С‡Р° СЃРѕС…СЂР°РЅРµРЅРёСЏ СЃРѕР±С‹С‚РёСЏ СЃС‚Р°С‚СѓСЃР°.</returns>
+    public async Task StoreSourceStatusEventAsync(SourceStatus status, CancellationToken cancellationToken)
+    {
+        const string sql = """
+            insert into meta.source_status_events(exchange, source, is_online, last_update, message)
+            values (@Exchange, @Source, @IsOnline, @LastUpdate, @Message)
+            """;
+
+        var payload = new
+        {
+            Exchange = status.Exchange.ToString(),
+            status.Source,
+            status.IsOnline,
+            status.LastUpdate,
+            status.Message
+        };
+
+        await using var connection = await _metadataDataSource.DataSource.OpenConnectionAsync(cancellationToken);
+        await connection.ExecuteAsync(new CommandDefinition(sql, payload, cancellationToken: cancellationToken));
+    }
+
+    /// <summary>
+    /// РЎРѕС…СЂР°РЅСЏРµС‚ Р°Р»РµСЂС‚ РІ PostgreSQL.
+    /// </summary>
+    /// <param name="alert">РђР»РµСЂС‚.</param>
+    /// <param name="cancellationToken">РўРѕРєРµРЅ РѕС‚РјРµРЅС‹.</param>
+    /// <returns>Р—Р°РґР°С‡Р° СЃРѕС…СЂР°РЅРµРЅРёСЏ Р°Р»РµСЂС‚Р°.</returns>
     public async Task StoreAlertAsync(Alert alert, CancellationToken cancellationToken)
     {
         const string sql = """
@@ -207,10 +296,10 @@ public sealed class HybridStorage : IStorage
     }
 
     /// <summary>
-    /// Загружает метаданные инструментов из PostgreSQL.
+    /// Р—Р°РіСЂСѓР¶Р°РµС‚ РјРµС‚Р°РґР°РЅРЅС‹Рµ РёРЅСЃС‚СЂСѓРјРµРЅС‚РѕРІ РёР· PostgreSQL.
     /// </summary>
-    /// <param name="cancellationToken">Токен отмены.</param>
-    /// <returns>Набор активных инструментов.</returns>
+    /// <param name="cancellationToken">РўРѕРєРµРЅ РѕС‚РјРµРЅС‹.</param>
+    /// <returns>РќР°Р±РѕСЂ Р°РєС‚РёРІРЅС‹С… РёРЅСЃС‚СЂСѓРјРµРЅС‚РѕРІ.</returns>
     public async Task<IReadOnlyCollection<InstrumentMetadata>> GetInstrumentsAsync(CancellationToken cancellationToken)
     {
         const string sql = """
@@ -252,10 +341,10 @@ public sealed class HybridStorage : IStorage
     }
 
     /// <summary>
-    /// Загружает конфигурации правил алертинга из PostgreSQL.
+    /// Р—Р°РіСЂСѓР¶Р°РµС‚ РєРѕРЅС„РёРіСѓСЂР°С†РёРё РїСЂР°РІРёР» Р°Р»РµСЂС‚РёРЅРіР° РёР· PostgreSQL.
     /// </summary>
-    /// <param name="cancellationToken">Токен отмены.</param>
-    /// <returns>Набор конфигураций правил.</returns>
+    /// <param name="cancellationToken">РўРѕРєРµРЅ РѕС‚РјРµРЅС‹.</param>
+    /// <returns>РќР°Р±РѕСЂ РєРѕРЅС„РёРіСѓСЂР°С†РёР№ РїСЂР°РІРёР».</returns>
     public Task<IReadOnlyCollection<AlertRuleConfig>> GetAlertRulesAsync(CancellationToken cancellationToken)
     {
         var repository = new PostgresConfigurationRepository(_metadataDataSource);
@@ -276,5 +365,53 @@ public sealed class HybridStorage : IStorage
         public required int VolumeDecimals { get; init; }
         public decimal? ContractSize { get; init; }
         public decimal? MinNotional { get; init; }
+    }
+
+    private static string SerializePayload(string? payload)
+    {
+        if (string.IsNullOrWhiteSpace(payload))
+        {
+            return "{\"error\":\"payload_missing\"}";
+        }
+
+        try
+        {
+            using var _ = JsonDocument.Parse(payload);
+            return payload;
+        }
+        catch
+        {
+            return JsonSerializer.Serialize(new
+            {
+                raw = payload,
+                error = "payload_not_json"
+            });
+        }
+    }
+
+    private static string? SerializeMetadata(IReadOnlyDictionary<string, string>? metadata)
+    {
+        if (metadata is null || metadata.Count == 0)
+        {
+            return null;
+        }
+
+        try
+        {
+            return JsonSerializer.Serialize(metadata);
+        }
+        catch
+        {
+            return JsonSerializer.Serialize(new
+            {
+                error = "metadata_serialize_failed"
+            });
+        }
+    }
+
+    private static string BuildRawFingerprint(RawTick rawTick)
+    {
+        var tradeId = rawTick.TradeId ?? string.Empty;
+        return $"{rawTick.Exchange}|{rawTick.Source}|{rawTick.Symbol}|{rawTick.EventTimestamp.UtcTicks}|{rawTick.Price}|{rawTick.Volume}|{tradeId}";
     }
 }

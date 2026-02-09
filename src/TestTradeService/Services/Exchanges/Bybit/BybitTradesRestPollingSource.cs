@@ -41,8 +41,17 @@ public sealed class BybitTradesRestPollingSource : RestPollingSource
             using var response = await _httpClient.GetAsync(url, ct);
             response.EnsureSuccessStatusCode();
 
+            var receivedAt = DateTimeOffset.UtcNow;
             var payload = await response.Content.ReadAsStringAsync(ct);
-            var ticks = BybitTradesParsing.ParseRestRecentTrades(symbol, payload);
+            var ticks = BybitTradesParsing.ParseRestRecentTrades(symbol, payload)
+                .Select(tick => tick with
+                {
+                    RawExchange = Exchange.ToString(),
+                    RawMarketType = MarketType.Spot.ToString(),
+                    RawReceivedAt = receivedAt,
+                    RawPayload = payload
+                })
+                .ToList();
 
             _cursorBySymbol.TryGetValue(symbol, out var cursor);
 
@@ -65,4 +74,3 @@ public sealed class BybitTradesRestPollingSource : RestPollingSource
         return all;
     }
 }
-

@@ -73,6 +73,7 @@ public sealed class SqlMigrationRunner
             || version.StartsWith("004", StringComparison.Ordinal)
             || version.StartsWith("005", StringComparison.Ordinal)
             || version.StartsWith("006", StringComparison.Ordinal)
+            || version.StartsWith("008", StringComparison.Ordinal)
             ? _metadataDataSource.DataSource
             : _timeseriesDataSource.DataSource;
     }

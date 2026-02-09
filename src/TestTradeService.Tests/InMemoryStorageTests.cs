@@ -99,4 +99,37 @@ public sealed class InMemoryStorageTests
         await Assert.ThrowsAsync<ArgumentException>(
             () => storage.StoreInstrumentAsync(spotMetadata, CancellationToken.None));
     }
+
+    /// <summary>
+    /// Проверяет, что методы сохранения raw-тиков и событий статуса выполняются без ошибок.
+    /// </summary>
+    [Fact]
+    public async Task StoreRawTickAndStatusEventAsync_Completes()
+    {
+        var storage = new InMemoryStorage();
+
+        await storage.StoreRawTickAsync(new RawTick
+        {
+            Exchange = "Bybit",
+            Source = "Bybit-WebSocket",
+            Symbol = "BTCUSDT",
+            MarketType = "Spot",
+            Price = 100m,
+            Volume = 1m,
+            TradeId = "t-1",
+            EventTimestamp = DateTimeOffset.UtcNow,
+            ReceivedAt = DateTimeOffset.UtcNow,
+            Payload = "{\"symbol\":\"BTCUSDT\"}",
+            Metadata = new Dictionary<string, string> { ["transport"] = "WebSocket" }
+        }, CancellationToken.None);
+
+        await storage.StoreSourceStatusEventAsync(new SourceStatus
+        {
+            Exchange = MarketExchange.Bybit,
+            Source = "Bybit-WebSocket",
+            IsOnline = true,
+            LastUpdate = DateTimeOffset.UtcNow,
+            Message = null
+        }, CancellationToken.None);
+    }
 }

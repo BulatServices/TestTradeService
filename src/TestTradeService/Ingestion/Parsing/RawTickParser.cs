@@ -94,6 +94,7 @@ public sealed class RawTickParser
             rawTick = new RawTick
             {
                 Exchange = exchange,
+                Source = message.ChannelId,
                 Symbol = symbol,
                 MarketType = marketType,
                 Price = price.Value,

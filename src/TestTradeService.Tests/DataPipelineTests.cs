@@ -68,6 +68,7 @@ public sealed class DataPipelineTests
 
         await pipeline.StartAsync(channel.Reader, CancellationToken.None);
 
+        Assert.Single(storage.StoredRawTicks);
         Assert.Single(storage.StoredTicks);
         Assert.Single(storage.StoredAggregates);
         Assert.Single(alertingStorage.StoredAlerts);
@@ -237,9 +238,16 @@ public sealed class DataPipelineTests
 
     private sealed class CapturingStorage : IStorage
     {
+        public List<RawTick> StoredRawTicks { get; } = new();
         public List<NormalizedTick> StoredTicks { get; } = new();
         public List<AggregatedCandle> StoredAggregates { get; } = new();
         public List<Alert> StoredAlerts { get; } = new();
+
+        public Task StoreRawTickAsync(RawTick rawTick, CancellationToken cancellationToken)
+        {
+            StoredRawTicks.Add(rawTick);
+            return Task.CompletedTask;
+        }
 
         public Task StoreTickAsync(NormalizedTick tick, CancellationToken cancellationToken)
         {
@@ -257,6 +265,9 @@ public sealed class DataPipelineTests
             => Task.CompletedTask;
 
         public Task StoreSourceStatusAsync(SourceStatus status, CancellationToken cancellationToken)
+            => Task.CompletedTask;
+
+        public Task StoreSourceStatusEventAsync(SourceStatus status, CancellationToken cancellationToken)
             => Task.CompletedTask;
 
         public Task StoreAlertAsync(Alert alert, CancellationToken cancellationToken)

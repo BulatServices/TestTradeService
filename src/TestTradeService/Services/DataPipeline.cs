@@ -1,3 +1,4 @@
+﻿using System.Text.Json;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using TestTradeService.Interfaces;
@@ -28,6 +29,7 @@ public sealed class DataPipeline
     /// <param name="storage">Хранилище данных.</param>
     /// <param name="alerting">Сервис оповещений.</param>
     /// <param name="monitoring">Сервис мониторинга.</param>
+    /// <param name="eventBus">Шина событий рыночного потока.</param>
     /// <param name="instrumentsConfig">Конфигурация инструментов.</param>
     /// <param name="logger">Логгер конвейера.</param>
     public DataPipeline(
@@ -58,6 +60,8 @@ public sealed class DataPipeline
     {
         await foreach (var tick in reader.ReadAllAsync(cancellationToken))
         {
+            await _storage.StoreRawTickAsync(BuildRawTick(tick), cancellationToken);
+
             var normalized = _normalizer.Normalize(tick);
             if (!_filter.IsAllowed(normalized))
             {
@@ -93,5 +97,55 @@ public sealed class DataPipeline
         }
 
         _logger.LogInformation("Pipeline stopped");
+    }
+
+    private RawTick BuildRawTick(Tick tick)
+    {
+        return new RawTick
+        {
+            Exchange = string.IsNullOrWhiteSpace(tick.RawExchange) ? ExtractExchangeFromSource(tick.Source) : tick.RawExchange,
+            Source = tick.Source,
+            Symbol = tick.Symbol,
+            MarketType = string.IsNullOrWhiteSpace(tick.RawMarketType) ? MarketType.Spot.ToString() : tick.RawMarketType,
+            Price = tick.Price,
+            Volume = tick.Volume,
+            TradeId = tick.TradeId,
+            EventTimestamp = tick.Timestamp,
+            ReceivedAt = tick.RawReceivedAt ?? tick.Timestamp,
+            Payload = BuildPayload(tick),
+            Metadata = tick.RawMetadata
+        };
+    }
+
+    private string BuildPayload(Tick tick)
+    {
+        if (!string.IsNullOrWhiteSpace(tick.RawPayload))
+        {
+            return tick.RawPayload;
+        }
+
+        try
+        {
+            return JsonSerializer.Serialize(new
+            {
+                source = tick.Source,
+                symbol = tick.Symbol,
+                price = tick.Price,
+                volume = tick.Volume,
+                timestamp = tick.Timestamp,
+                tradeId = tick.TradeId
+            });
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(exception, "Failed to serialize fallback raw payload for source {Source}", tick.Source);
+            return "{\"error\":\"payload_serialize_failed\"}";
+        }
+    }
+
+    private static string ExtractExchangeFromSource(string source)
+    {
+        var parts = source.Split('-', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return parts.Length > 0 ? parts[0] : source;
     }
 }

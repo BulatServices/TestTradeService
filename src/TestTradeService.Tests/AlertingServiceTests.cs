@@ -181,6 +181,8 @@ public sealed class AlertingServiceTests
 
         public IReadOnlyList<Alert> StoredAlerts => _alerts;
 
+        public Task StoreRawTickAsync(RawTick rawTick, CancellationToken cancellationToken) => Task.CompletedTask;
+
         public Task StoreTickAsync(NormalizedTick tick, CancellationToken cancellationToken) => Task.CompletedTask;
 
         public Task StoreAggregateAsync(AggregatedCandle candle, CancellationToken cancellationToken) => Task.CompletedTask;
@@ -188,6 +190,8 @@ public sealed class AlertingServiceTests
         public Task StoreInstrumentAsync(InstrumentMetadata metadata, CancellationToken cancellationToken) => Task.CompletedTask;
 
         public Task StoreSourceStatusAsync(SourceStatus status, CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task StoreSourceStatusEventAsync(SourceStatus status, CancellationToken cancellationToken) => Task.CompletedTask;
 
         public Task StoreAlertAsync(Alert alert, CancellationToken cancellationToken)
         {

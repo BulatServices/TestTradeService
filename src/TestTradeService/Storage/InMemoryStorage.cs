@@ -1,27 +1,41 @@
-using System.Collections.Concurrent;
+п»їusing System.Collections.Concurrent;
 using TestTradeService.Interfaces;
 using TestTradeService.Models;
 
 namespace TestTradeService.Storage;
 
 /// <summary>
-/// Потокобезопасная in-memory реализация хранилища.
+/// РџРѕС‚РѕРєРѕР±РµР·РѕРїР°СЃРЅР°СЏ in-memory СЂРµР°Р»РёР·Р°С†РёСЏ С…СЂР°РЅРёР»РёС‰Р°.
 /// </summary>
 public sealed class InMemoryStorage : IStorage
 {
+    private readonly ConcurrentBag<RawTick> _rawTicks = new();
     private readonly ConcurrentBag<NormalizedTick> _ticks = new();
     private readonly ConcurrentBag<AggregatedCandle> _aggregates = new();
     private readonly ConcurrentBag<InstrumentMetadata> _instruments = new();
     private readonly ConcurrentBag<SourceStatus> _statuses = new();
+    private readonly ConcurrentBag<SourceStatus> _statusEvents = new();
     private readonly ConcurrentBag<Alert> _alerts = new();
     private readonly IReadOnlyCollection<AlertRuleConfig> _alertRules = DefaultConfigurationFactory.CreateAlertRules();
 
     /// <summary>
-    /// Сохраняет raw-тик.
+    /// РЎРѕС…СЂР°РЅСЏРµС‚ СЃС‹СЂРѕР№ С‚РёРє.
     /// </summary>
-    /// <param name="tick">Нормализованный тик.</param>
-    /// <param name="cancellationToken">Токен отмены.</param>
-    /// <returns>Задача сохранения тика.</returns>
+    /// <param name="rawTick">РЎС‹СЂРѕР№ С‚РёРє РґРѕ РЅРѕСЂРјР°Р»РёР·Р°С†РёРё.</param>
+    /// <param name="cancellationToken">РўРѕРєРµРЅ РѕС‚РјРµРЅС‹.</param>
+    /// <returns>Р—Р°РґР°С‡Р° СЃРѕС…СЂР°РЅРµРЅРёСЏ СЃС‹СЂРѕРіРѕ С‚РёРєР°.</returns>
+    public Task StoreRawTickAsync(RawTick rawTick, CancellationToken cancellationToken)
+    {
+        _rawTicks.Add(rawTick);
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// РЎРѕС…СЂР°РЅСЏРµС‚ raw-С‚РёРє.
+    /// </summary>
+    /// <param name="tick">РќРѕСЂРјР°Р»РёР·РѕРІР°РЅРЅС‹Р№ С‚РёРє.</param>
+    /// <param name="cancellationToken">РўРѕРєРµРЅ РѕС‚РјРµРЅС‹.</param>
+    /// <returns>Р—Р°РґР°С‡Р° СЃРѕС…СЂР°РЅРµРЅРёСЏ С‚РёРєР°.</returns>
     public Task StoreTickAsync(NormalizedTick tick, CancellationToken cancellationToken)
     {
         _ticks.Add(tick);
@@ -29,11 +43,11 @@ public sealed class InMemoryStorage : IStorage
     }
 
     /// <summary>
-    /// Сохраняет агрегированную свечу.
+    /// РЎРѕС…СЂР°РЅСЏРµС‚ Р°РіСЂРµРіРёСЂРѕРІР°РЅРЅСѓСЋ СЃРІРµС‡Сѓ.
     /// </summary>
-    /// <param name="candle">Агрегированная свеча.</param>
-    /// <param name="cancellationToken">Токен отмены.</param>
-    /// <returns>Задача сохранения свечи.</returns>
+    /// <param name="candle">РђРіСЂРµРіРёСЂРѕРІР°РЅРЅР°СЏ СЃРІРµС‡Р°.</param>
+    /// <param name="cancellationToken">РўРѕРєРµРЅ РѕС‚РјРµРЅС‹.</param>
+    /// <returns>Р—Р°РґР°С‡Р° СЃРѕС…СЂР°РЅРµРЅРёСЏ СЃРІРµС‡Рё.</returns>
     public Task StoreAggregateAsync(AggregatedCandle candle, CancellationToken cancellationToken)
     {
         _aggregates.Add(candle);
@@ -41,12 +55,12 @@ public sealed class InMemoryStorage : IStorage
     }
 
     /// <summary>
-    /// Сохраняет метаданные инструмента.
+    /// РЎРѕС…СЂР°РЅСЏРµС‚ РјРµС‚Р°РґР°РЅРЅС‹Рµ РёРЅСЃС‚СЂСѓРјРµРЅС‚Р°.
     /// </summary>
-    /// <param name="metadata">Метаданные инструмента.</param>
-    /// <param name="cancellationToken">Токен отмены.</param>
-    /// <returns>Задача сохранения метаданных.</returns>
-    /// <exception cref="ArgumentException">Метаданные инструмента невалидны.</exception>
+    /// <param name="metadata">РњРµС‚Р°РґР°РЅРЅС‹Рµ РёРЅСЃС‚СЂСѓРјРµРЅС‚Р°.</param>
+    /// <param name="cancellationToken">РўРѕРєРµРЅ РѕС‚РјРµРЅС‹.</param>
+    /// <returns>Р—Р°РґР°С‡Р° СЃРѕС…СЂР°РЅРµРЅРёСЏ РјРµС‚Р°РґР°РЅРЅС‹С….</returns>
+    /// <exception cref="ArgumentException">РњРµС‚Р°РґР°РЅРЅС‹Рµ РёРЅСЃС‚СЂСѓРјРµРЅС‚Р° РЅРµРІР°Р»РёРґРЅС‹.</exception>
     public Task StoreInstrumentAsync(InstrumentMetadata metadata, CancellationToken cancellationToken)
     {
         ValidateInstrumentMetadata(metadata);
@@ -55,11 +69,11 @@ public sealed class InMemoryStorage : IStorage
     }
 
     /// <summary>
-    /// Сохраняет статус источника.
+    /// РЎРѕС…СЂР°РЅСЏРµС‚ СЃС‚Р°С‚СѓСЃ РёСЃС‚РѕС‡РЅРёРєР°.
     /// </summary>
-    /// <param name="status">Статус источника.</param>
-    /// <param name="cancellationToken">Токен отмены.</param>
-    /// <returns>Задача сохранения статуса.</returns>
+    /// <param name="status">РЎС‚Р°С‚СѓСЃ РёСЃС‚РѕС‡РЅРёРєР°.</param>
+    /// <param name="cancellationToken">РўРѕРєРµРЅ РѕС‚РјРµРЅС‹.</param>
+    /// <returns>Р—Р°РґР°С‡Р° СЃРѕС…СЂР°РЅРµРЅРёСЏ СЃС‚Р°С‚СѓСЃР°.</returns>
     public Task StoreSourceStatusAsync(SourceStatus status, CancellationToken cancellationToken)
     {
         _statuses.Add(status);
@@ -67,11 +81,23 @@ public sealed class InMemoryStorage : IStorage
     }
 
     /// <summary>
-    /// Сохраняет алерт.
+    /// РЎРѕС…СЂР°РЅСЏРµС‚ СЃРѕР±С‹С‚РёРµ РёР·РјРµРЅРµРЅРёСЏ СЃС‚Р°С‚СѓСЃР° РёСЃС‚РѕС‡РЅРёРєР°.
     /// </summary>
-    /// <param name="alert">Алерт.</param>
-    /// <param name="cancellationToken">Токен отмены.</param>
-    /// <returns>Задача сохранения алерта.</returns>
+    /// <param name="status">РЎС‚Р°С‚СѓСЃ РёСЃС‚РѕС‡РЅРёРєР° РЅР° РјРѕРјРµРЅС‚ РёР·РјРµРЅРµРЅРёСЏ.</param>
+    /// <param name="cancellationToken">РўРѕРєРµРЅ РѕС‚РјРµРЅС‹.</param>
+    /// <returns>Р—Р°РґР°С‡Р° СЃРѕС…СЂР°РЅРµРЅРёСЏ СЃРѕР±С‹С‚РёСЏ СЃС‚Р°С‚СѓСЃР°.</returns>
+    public Task StoreSourceStatusEventAsync(SourceStatus status, CancellationToken cancellationToken)
+    {
+        _statusEvents.Add(status);
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// РЎРѕС…СЂР°РЅСЏРµС‚ Р°Р»РµСЂС‚.
+    /// </summary>
+    /// <param name="alert">РђР»РµСЂС‚.</param>
+    /// <param name="cancellationToken">РўРѕРєРµРЅ РѕС‚РјРµРЅС‹.</param>
+    /// <returns>Р—Р°РґР°С‡Р° СЃРѕС…СЂР°РЅРµРЅРёСЏ Р°Р»РµСЂС‚Р°.</returns>
     public Task StoreAlertAsync(Alert alert, CancellationToken cancellationToken)
     {
         _alerts.Add(alert);
@@ -79,20 +105,20 @@ public sealed class InMemoryStorage : IStorage
     }
 
     /// <summary>
-    /// Загружает метаданные инструментов.
+    /// Р—Р°РіСЂСѓР¶Р°РµС‚ РјРµС‚Р°РґР°РЅРЅС‹Рµ РёРЅСЃС‚СЂСѓРјРµРЅС‚РѕРІ.
     /// </summary>
-    /// <param name="cancellationToken">Токен отмены.</param>
-    /// <returns>Набор метаданных инструментов.</returns>
+    /// <param name="cancellationToken">РўРѕРєРµРЅ РѕС‚РјРµРЅС‹.</param>
+    /// <returns>РќР°Р±РѕСЂ РјРµС‚Р°РґР°РЅРЅС‹С… РёРЅСЃС‚СЂСѓРјРµРЅС‚РѕРІ.</returns>
     public Task<IReadOnlyCollection<InstrumentMetadata>> GetInstrumentsAsync(CancellationToken cancellationToken)
     {
         return Task.FromResult((IReadOnlyCollection<InstrumentMetadata>)_instruments.ToArray());
     }
 
     /// <summary>
-    /// Загружает конфигурации правил алертинга.
+    /// Р—Р°РіСЂСѓР¶Р°РµС‚ РєРѕРЅС„РёРіСѓСЂР°С†РёРё РїСЂР°РІРёР» Р°Р»РµСЂС‚РёРЅРіР°.
     /// </summary>
-    /// <param name="cancellationToken">Токен отмены.</param>
-    /// <returns>Набор конфигураций правил.</returns>
+    /// <param name="cancellationToken">РўРѕРєРµРЅ РѕС‚РјРµРЅС‹.</param>
+    /// <returns>РќР°Р±РѕСЂ РєРѕРЅС„РёРіСѓСЂР°С†РёР№ РїСЂР°РІРёР».</returns>
     public Task<IReadOnlyCollection<AlertRuleConfig>> GetAlertRulesAsync(CancellationToken cancellationToken)
     {
         return Task.FromResult(_alertRules);
@@ -102,59 +128,59 @@ public sealed class InMemoryStorage : IStorage
     {
         if (string.IsNullOrWhiteSpace(metadata.Exchange))
         {
-            throw new ArgumentException("Поле Exchange должно быть задано.", nameof(metadata));
+            throw new ArgumentException("РџРѕР»Рµ Exchange РґРѕР»Р¶РЅРѕ Р±С‹С‚СЊ Р·Р°РґР°РЅРѕ.", nameof(metadata));
         }
 
         if (string.IsNullOrWhiteSpace(metadata.Symbol))
         {
-            throw new ArgumentException("Поле Symbol должно быть задано.", nameof(metadata));
+            throw new ArgumentException("РџРѕР»Рµ Symbol РґРѕР»Р¶РЅРѕ Р±С‹С‚СЊ Р·Р°РґР°РЅРѕ.", nameof(metadata));
         }
 
         if (string.IsNullOrWhiteSpace(metadata.BaseAsset))
         {
-            throw new ArgumentException("Поле BaseAsset должно быть задано.", nameof(metadata));
+            throw new ArgumentException("РџРѕР»Рµ BaseAsset РґРѕР»Р¶РЅРѕ Р±С‹С‚СЊ Р·Р°РґР°РЅРѕ.", nameof(metadata));
         }
 
         if (string.IsNullOrWhiteSpace(metadata.QuoteAsset))
         {
-            throw new ArgumentException("Поле QuoteAsset должно быть задано.", nameof(metadata));
+            throw new ArgumentException("РџРѕР»Рµ QuoteAsset РґРѕР»Р¶РЅРѕ Р±С‹С‚СЊ Р·Р°РґР°РЅРѕ.", nameof(metadata));
         }
 
         if (metadata.PriceTickSize <= 0)
         {
-            throw new ArgumentException("Поле PriceTickSize должно быть больше нуля.", nameof(metadata));
+            throw new ArgumentException("РџРѕР»Рµ PriceTickSize РґРѕР»Р¶РЅРѕ Р±С‹С‚СЊ Р±РѕР»СЊС€Рµ РЅСѓР»СЏ.", nameof(metadata));
         }
 
         if (metadata.VolumeStep <= 0)
         {
-            throw new ArgumentException("Поле VolumeStep должно быть больше нуля.", nameof(metadata));
+            throw new ArgumentException("РџРѕР»Рµ VolumeStep РґРѕР»Р¶РЅРѕ Р±С‹С‚СЊ Р±РѕР»СЊС€Рµ РЅСѓР»СЏ.", nameof(metadata));
         }
 
         if (metadata.PriceDecimals < 0)
         {
-            throw new ArgumentException("Поле PriceDecimals не может быть отрицательным.", nameof(metadata));
+            throw new ArgumentException("РџРѕР»Рµ PriceDecimals РЅРµ РјРѕР¶РµС‚ Р±С‹С‚СЊ РѕС‚СЂРёС†Р°С‚РµР»СЊРЅС‹Рј.", nameof(metadata));
         }
 
         if (metadata.VolumeDecimals < 0)
         {
-            throw new ArgumentException("Поле VolumeDecimals не может быть отрицательным.", nameof(metadata));
+            throw new ArgumentException("РџРѕР»Рµ VolumeDecimals РЅРµ РјРѕР¶РµС‚ Р±С‹С‚СЊ РѕС‚СЂРёС†Р°С‚РµР»СЊРЅС‹Рј.", nameof(metadata));
         }
 
         if (metadata.MarketType == MarketType.Perp)
         {
             if (metadata.ContractSize is null || metadata.ContractSize <= 0)
             {
-                throw new ArgumentException("Для рынка perp поле ContractSize должно быть задано и больше нуля.", nameof(metadata));
+                throw new ArgumentException("Р”Р»СЏ СЂС‹РЅРєР° perp РїРѕР»Рµ ContractSize РґРѕР»Р¶РЅРѕ Р±С‹С‚СЊ Р·Р°РґР°РЅРѕ Рё Р±РѕР»СЊС€Рµ РЅСѓР»СЏ.", nameof(metadata));
             }
         }
         else if (metadata.ContractSize is not null)
         {
-            throw new ArgumentException("Для рынка spot поле ContractSize должно быть null.", nameof(metadata));
+            throw new ArgumentException("Р”Р»СЏ СЂС‹РЅРєР° spot РїРѕР»Рµ ContractSize РґРѕР»Р¶РЅРѕ Р±С‹С‚СЊ null.", nameof(metadata));
         }
 
         if (metadata.MinNotional is not null && metadata.MinNotional <= 0)
         {
-            throw new ArgumentException("Поле MinNotional должно быть больше нуля (или null).", nameof(metadata));
+            throw new ArgumentException("РџРѕР»Рµ MinNotional РґРѕР»Р¶РЅРѕ Р±С‹С‚СЊ Р±РѕР»СЊС€Рµ РЅСѓР»СЏ (РёР»Рё null).", nameof(metadata));
         }
     }
 }

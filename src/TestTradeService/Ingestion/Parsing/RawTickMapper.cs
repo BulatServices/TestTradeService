@@ -20,12 +20,17 @@ public sealed class RawTickMapper
 
         return new Tick
         {
-            Source = rawTick.Exchange,
+            Source = rawTick.Source,
             Symbol = rawTick.Symbol,
             Price = rawTick.Price,
             Volume = rawTick.Volume,
             Timestamp = rawTick.EventTimestamp,
-            TradeId = rawTick.TradeId
+            TradeId = rawTick.TradeId,
+            RawExchange = rawTick.Exchange,
+            RawMarketType = rawTick.MarketType,
+            RawReceivedAt = rawTick.ReceivedAt,
+            RawPayload = rawTick.Payload,
+            RawMetadata = rawTick.Metadata
         };
     }
 }

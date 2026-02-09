@@ -1,9 +1,9 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 
 namespace TestTradeService.Models;
 
 /// <summary>
-/// Сырой тик, извлечённый из payload до нормализации.
+/// Сырой тик, извлеченный из payload до нормализации.
 /// </summary>
 public sealed record RawTick
 {
@@ -11,6 +11,11 @@ public sealed record RawTick
     /// Биржа-источник.
     /// </summary>
     public required string Exchange { get; init; }
+
+    /// <summary>
+    /// Источник/канал, опубликовавший тик.
+    /// </summary>
+    public required string Source { get; init; }
 
     /// <summary>
     /// Символ торгового инструмента.
@@ -28,7 +33,7 @@ public sealed record RawTick
     public required decimal Price { get; init; }
 
     /// <summary>
-    /// Объём сделки.
+    /// Объем сделки.
     /// </summary>
     public required decimal Volume { get; init; }
 

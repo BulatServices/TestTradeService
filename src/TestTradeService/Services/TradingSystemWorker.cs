@@ -204,7 +204,7 @@ public sealed class TradingSystemWorker : BackgroundService, IRuntimeReconfigura
     {
         try
         {
-            await _storage.StoreSourceStatusAsync(new SourceStatus
+            await StoreSourceStatusWithHistoryAsync(new SourceStatus
             {
                 Exchange = source.Exchange,
                 Source = source.Name,
@@ -221,7 +221,7 @@ public sealed class TradingSystemWorker : BackgroundService, IRuntimeReconfigura
         catch (Exception ex)
         {
             _logger.LogError(ex, "Source {Source} crashed", source.Name);
-            await _storage.StoreSourceStatusAsync(new SourceStatus
+            await StoreSourceStatusWithHistoryAsync(new SourceStatus
             {
                 Exchange = source.Exchange,
                 Source = source.Name,
@@ -230,6 +230,12 @@ public sealed class TradingSystemWorker : BackgroundService, IRuntimeReconfigura
                 Message = ex.Message
             }, cancellationToken);
         }
+    }
+
+    private async Task StoreSourceStatusWithHistoryAsync(SourceStatus status, CancellationToken cancellationToken)
+    {
+        await _storage.StoreSourceStatusAsync(status, cancellationToken);
+        await _storage.StoreSourceStatusEventAsync(status, cancellationToken);
     }
 
     private async Task ReportMonitoringAsync(CancellationToken cancellationToken)

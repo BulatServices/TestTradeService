@@ -158,7 +158,16 @@ public abstract class WebSocketSource : IMarketDataSource
             {
                 var normalized = tick with
                 {
-                    Source = Name
+                    Source = Name,
+                    RawExchange = Exchange.ToString(),
+                    RawMarketType = MarketType.Spot.ToString(),
+                    RawReceivedAt = receivedAt,
+                    RawPayload = payload,
+                    RawMetadata = new Dictionary<string, string>(StringComparer.Ordinal)
+                    {
+                        ["transport"] = MarketDataSourceTransport.WebSocket.ToString(),
+                        ["source"] = Name
+                    }
                 };
 
                 if (!_tradeCursorStore.ShouldEmit(Exchange, normalized.Symbol, normalized.Timestamp, normalized.TradeId, normalized.Price, normalized.Volume))
