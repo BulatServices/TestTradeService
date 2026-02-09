@@ -38,7 +38,7 @@ public sealed class TradeCursorStore
             if (state.RecentFingerprints.ContainsKey(fingerprint))
                 return false;
 
-            if (string.IsNullOrWhiteSpace(tradeId) && ts < state.LastTimestamp)
+            if (ts < state.LastTimestamp)
                 return false;
 
             return true;

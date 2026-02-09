@@ -36,6 +36,7 @@ public sealed class AlertRuleWriteRepository : IAlertRuleWriteRepository
         var effectiveRules = request.Items
             .Where(item => !string.Equals(item.RuleName, AlertingChannels.GlobalRuleName, StringComparison.OrdinalIgnoreCase))
             .ToList();
+        ValidateRules(effectiveRules);
 
         effectiveRules.Add(new AlertRuleConfigDto
         {
@@ -91,5 +92,33 @@ public sealed class AlertRuleWriteRepository : IAlertRuleWriteRepository
             Symbol = item.Symbol,
             Parameters = new Dictionary<string, string>(item.Parameters, StringComparer.OrdinalIgnoreCase)
         }).ToArray());
+    }
+
+    private static void ValidateRules(IReadOnlyCollection<AlertRuleConfigDto> rules)
+    {
+        foreach (var item in rules)
+        {
+            if (string.IsNullOrWhiteSpace(item.RuleName))
+                throw new ArgumentException("Имя правила не может быть пустым.");
+
+            if (item.Parameters is null)
+                throw new ArgumentException($"Для правила '{item.RuleName}' не задан набор параметров.");
+
+            if (string.Equals(item.RuleName, "PriceThreshold", StringComparison.OrdinalIgnoreCase) &&
+                (string.IsNullOrWhiteSpace(item.Exchange) || string.IsNullOrWhiteSpace(item.Symbol)))
+            {
+                throw new ArgumentException("Для правила 'PriceThreshold' необходимо указать биржу и тикер (exchange и symbol).");
+            }
+        }
+
+        var duplicateScope = rules
+            .GroupBy(item => $"{item.RuleName?.Trim().ToUpperInvariant()}::{item.Exchange?.Trim().ToUpperInvariant() ?? string.Empty}::{item.Symbol?.Trim().ToUpperInvariant() ?? string.Empty}")
+            .FirstOrDefault(group => group.Count() > 1);
+
+        if (duplicateScope is null)
+            return;
+
+        var first = duplicateScope.First();
+        throw new ArgumentException($"Найден дубликат правила для скоупа '{first.RuleName}'/'{first.Exchange ?? "*"}'/'{first.Symbol ?? "*"}'.");
     }
 }

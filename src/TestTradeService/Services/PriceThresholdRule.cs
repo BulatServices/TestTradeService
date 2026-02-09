@@ -1,53 +1,54 @@
-using System.Globalization;
+п»їusing System.Globalization;
 using TestTradeService.Interfaces;
 using TestTradeService.Models;
 
 namespace TestTradeService.Services;
 
 /// <summary>
-/// Правило алертинга по выходу цены за заданные пороги.
+/// РџСЂР°РІРёР»Рѕ Р°Р»РµСЂС‚РёРЅРіР° РїРѕ РІС‹С…РѕРґСѓ С†РµРЅС‹ Р·Р° Р·Р°РґР°РЅРЅС‹Рµ РїРѕСЂРѕРіРё.
 /// </summary>
 public sealed class PriceThresholdRule : IAlertRule
 {
-    private const decimal DefaultMinPrice = 18_000m;
-    private const decimal DefaultMaxPrice = 22_000m;
     private readonly IAlertRuleConfigProvider _configProvider;
 
     /// <summary>
-    /// Инициализирует правило контроля ценовых порогов.
+    /// РРЅРёС†РёР°Р»РёР·РёСЂСѓРµС‚ РїСЂР°РІРёР»Рѕ РєРѕРЅС‚СЂРѕР»СЏ С†РµРЅРѕРІС‹С… РїРѕСЂРѕРіРѕРІ.
     /// </summary>
-    /// <param name="configProvider">Провайдер параметров правил алертинга.</param>
+    /// <param name="configProvider">РџСЂРѕРІР°Р№РґРµСЂ РїР°СЂР°РјРµС‚СЂРѕРІ РїСЂР°РІРёР» Р°Р»РµСЂС‚РёРЅРіР°.</param>
     public PriceThresholdRule(IAlertRuleConfigProvider configProvider)
     {
         _configProvider = configProvider;
     }
 
     /// <summary>
-    /// Имя правила.
+    /// РРјСЏ РїСЂР°РІРёР»Р°.
     /// </summary>
     public string Name => "PriceThreshold";
 
     /// <summary>
-    /// Проверяет превышение/понижение цены относительно порогов.
+    /// РџСЂРѕРІРµСЂСЏРµС‚ РїСЂРµРІС‹С€РµРЅРёРµ/РїРѕРЅРёР¶РµРЅРёРµ С†РµРЅС‹ РѕС‚РЅРѕСЃРёС‚РµР»СЊРЅРѕ РїРѕСЂРѕРіРѕРІ.
     /// </summary>
-    /// <param name="tick">Нормализованный тик.</param>
-    /// <param name="metrics">Рассчитанные метрики по инструменту.</param>
-    /// <returns><c>true</c>, если цена вышла за допустимый диапазон.</returns>
+    /// <param name="tick">РќРѕСЂРјР°Р»РёР·РѕРІР°РЅРЅС‹Р№ С‚РёРє.</param>
+    /// <param name="metrics">Р Р°СЃСЃС‡РёС‚Р°РЅРЅС‹Рµ РјРµС‚СЂРёРєРё РїРѕ РёРЅСЃС‚СЂСѓРјРµРЅС‚Сѓ.</param>
+    /// <returns><c>true</c>, РµСЃР»Рё С†РµРЅР° РІС‹С€Р»Р° Р·Р° РґРѕРїСѓСЃС‚РёРјС‹Р№ РґРёР°РїР°Р·РѕРЅ.</returns>
     public bool IsMatch(NormalizedTick tick, MetricsSnapshot metrics)
     {
         var parameters = _configProvider.GetParameters(Name, tick.Source, tick.Symbol);
-        var minPrice = GetDecimal(parameters, "min_price", DefaultMinPrice);
-        var maxPrice = GetDecimal(parameters, "max_price", DefaultMaxPrice);
+        if (!TryGetDecimal(parameters, "min_price", out var minPrice) ||
+            !TryGetDecimal(parameters, "max_price", out var maxPrice))
+        {
+            return false;
+        }
 
         return tick.Price > maxPrice || tick.Price < minPrice;
     }
 
     /// <summary>
-    /// Создает алерт по факту срабатывания правила.
+    /// РЎРѕР·РґР°РµС‚ Р°Р»РµСЂС‚ РїРѕ С„Р°РєС‚Сѓ СЃСЂР°Р±Р°С‚С‹РІР°РЅРёСЏ РїСЂР°РІРёР»Р°.
     /// </summary>
-    /// <param name="tick">Нормализованный тик.</param>
-    /// <param name="metrics">Рассчитанные метрики.</param>
-    /// <returns>Сформированный алерт.</returns>
+    /// <param name="tick">РќРѕСЂРјР°Р»РёР·РѕРІР°РЅРЅС‹Р№ С‚РёРє.</param>
+    /// <param name="metrics">Р Р°СЃСЃС‡РёС‚Р°РЅРЅС‹Рµ РјРµС‚СЂРёРєРё.</param>
+    /// <returns>РЎС„РѕСЂРјРёСЂРѕРІР°РЅРЅС‹Р№ Р°Р»РµСЂС‚.</returns>
     public Alert CreateAlert(NormalizedTick tick, MetricsSnapshot metrics)
     {
         return new Alert
@@ -60,13 +61,12 @@ public sealed class PriceThresholdRule : IAlertRule
         };
     }
 
-    private static decimal GetDecimal(IReadOnlyDictionary<string, string> parameters, string key, decimal fallback)
+    private static bool TryGetDecimal(IReadOnlyDictionary<string, string> parameters, string key, out decimal parsed)
     {
+        parsed = default;
         if (!parameters.TryGetValue(key, out var value))
-            return fallback;
+            return false;
 
-        return decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed)
-            ? parsed
-            : fallback;
+        return decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out parsed);
     }
 }

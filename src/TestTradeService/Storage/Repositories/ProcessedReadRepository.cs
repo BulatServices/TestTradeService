@@ -35,6 +35,7 @@ public sealed class ProcessedReadRepository : IProcessedReadRepository
             select count(*)
             from market.candles
             where (@WindowSeconds is null or window_seconds = @WindowSeconds)
+              and lower(split_part(source, '-', 1)) <> 'demo'
               and (@Symbol is null or symbol = @Symbol)
               and (@Exchange is null or split_part(source, '-', 1) = @Exchange)
               and (@DateFrom is null or "time" >= @DateFrom)
@@ -56,6 +57,7 @@ public sealed class ProcessedReadRepository : IProcessedReadRepository
                 count as Count
             from market.candles
             where (@WindowSeconds is null or window_seconds = @WindowSeconds)
+              and lower(split_part(source, '-', 1)) <> 'demo'
               and (@Symbol is null or symbol = @Symbol)
               and (@Exchange is null or split_part(source, '-', 1) = @Exchange)
               and (@DateFrom is null or "time" >= @DateFrom)
@@ -106,6 +108,7 @@ public sealed class ProcessedReadRepository : IProcessedReadRepository
                 sum(count)::int as Count
             from market.candles
             where (@WindowSeconds is null or window_seconds = @WindowSeconds)
+              and lower(split_part(source, '-', 1)) <> 'demo'
               and (@Symbol is null or symbol = @Symbol)
               and (@Exchange is null or split_part(source, '-', 1) = @Exchange)
               and (@DateFrom is null or "time" >= @DateFrom)

@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { MonitoringPage } from './MonitoringPage';
 import { getMonitoringSnapshot } from '../../features/monitoring/api/monitoringApi';
 import { getAlerts, getAlertRules, putAlertRules } from '../../features/alerts/api/alertsApi';
+import { getSourceConfig } from '../../features/config/api/configApi';
 
 vi.mock('../../features/monitoring/api/monitoringApi', () => ({
   getMonitoringSnapshot: vi.fn()
@@ -14,6 +15,10 @@ vi.mock('../../features/alerts/api/alertsApi', () => ({
   getAlerts: vi.fn(),
   getAlertRules: vi.fn(),
   putAlertRules: vi.fn()
+}));
+
+vi.mock('../../features/config/api/configApi', () => ({
+  getSourceConfig: vi.fn()
 }));
 
 describe('MonitoringPage', () => {
@@ -37,6 +42,18 @@ describe('MonitoringPage', () => {
       warnings: []
     });
     vi.mocked(getAlerts).mockResolvedValue({ items: [] });
+    vi.mocked(getSourceConfig).mockResolvedValue({
+      profiles: [
+        {
+          exchange: 'Kraken',
+          marketType: 'Spot',
+          transport: 'WebSocket',
+          symbols: ['XBT/USD'],
+          targetUpdateIntervalMs: 2000,
+          isEnabled: true
+        }
+      ]
+    });
     vi.mocked(getAlertRules).mockResolvedValue({
       items: [
         {
@@ -87,8 +104,8 @@ describe('MonitoringPage', () => {
         {
           ruleName: 'PriceThreshold',
           enabled: true,
-          exchange: null,
-          symbol: null,
+          exchange: 'Kraken',
+          symbol: 'XBT/USD',
           parameters: {
             min_price: '18000',
             max_price: '22000',

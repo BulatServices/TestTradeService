@@ -14,10 +14,10 @@ public sealed class PriceThresholdRuleTests
     /// Проверяет пороговые условия по цене.
     /// </summary>
     [Theory]
-    [InlineData(17_999, true)]
-    [InlineData(18_000, false)]
-    [InlineData(21_999, false)]
-    [InlineData(22_001, true)]
+    [InlineData(9_999, true)]
+    [InlineData(10_000, false)]
+    [InlineData(199_999, false)]
+    [InlineData(200_001, true)]
     public void IsMatch_WhenPriceOutsideRange_ReturnsExpected(decimal price, bool expected)
     {
         var rule = new PriceThresholdRule(new AlertRuleConfigProvider(DefaultConfigurationFactory.CreateAlertRules()));
@@ -48,12 +48,49 @@ public sealed class PriceThresholdRuleTests
         Assert.Contains("Price threshold", alert.Message);
     }
 
+    /// <summary>
+    /// Проверяет, что при отсутствии конфигурации по тикеру правило не срабатывает.
+    /// </summary>
+    [Fact]
+    public void IsMatch_WhenTickerHasNoConfiguredThreshold_ReturnsFalse()
+    {
+        var provider = new AlertRuleConfigProvider(new[]
+        {
+            new AlertRuleConfig
+            {
+                RuleName = "PriceThreshold",
+                Enabled = true,
+                Exchange = "Kraken",
+                Symbol = "XBT/USD",
+                Parameters = new Dictionary<string, string>
+                {
+                    ["min_price"] = "18000",
+                    ["max_price"] = "22000"
+                }
+            }
+        });
+        var rule = new PriceThresholdRule(provider);
+        var tick = new NormalizedTick
+        {
+            Source = "Coinbase-WebSocket",
+            Symbol = "BTC-USD",
+            Price = 25_000m,
+            Volume = 1m,
+            Timestamp = DateTimeOffset.UtcNow,
+            Fingerprint = "fp-missing"
+        };
+
+        var match = rule.IsMatch(tick, CreateMetrics());
+
+        Assert.False(match);
+    }
+
     private static NormalizedTick CreateTick(decimal price)
     {
         return new NormalizedTick
         {
-            Source = "Kraken",
-            Symbol = "BTCUSD",
+            Source = "Kraken-WebSocket",
+            Symbol = "XBT/USD",
             Price = price,
             Volume = 1m,
             Timestamp = DateTimeOffset.UtcNow,

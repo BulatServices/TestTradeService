@@ -88,4 +88,35 @@ public sealed class InMemoryAlertRepositoryTests
             new[] { "Console", "File" },
             AlertingChannels.ParseCsv(globalConfig.Parameters[AlertingChannels.ChannelsParameterKey]).OrderBy(x => x));
     }
+
+    /// <summary>
+    /// Проверяет, что правило PriceThreshold без биржи и тикера отклоняется при сохранении.
+    /// </summary>
+    [Fact]
+    public async Task SaveAlertRulesAsync_WhenPriceThresholdWithoutScope_ThrowsArgumentException()
+    {
+        var provider = new AlertRuleConfigProvider(Array.Empty<AlertRuleConfig>());
+        var repository = new InMemoryAlertRepository(provider);
+
+        var exception = await Assert.ThrowsAsync<ArgumentException>(() => repository.SaveAlertRulesAsync(new PutAlertRulesRequest
+        {
+            Items =
+            [
+                new AlertRuleConfigDto
+                {
+                    RuleName = "PriceThreshold",
+                    Enabled = true,
+                    Exchange = null,
+                    Symbol = null,
+                    Parameters = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                    {
+                        ["min_price"] = "100",
+                        ["max_price"] = "200"
+                    }
+                }
+            ]
+        }, CancellationToken.None));
+
+        Assert.Contains("PriceThreshold", exception.Message, StringComparison.OrdinalIgnoreCase);
+    }
 }

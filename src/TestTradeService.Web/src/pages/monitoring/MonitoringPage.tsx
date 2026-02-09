@@ -18,8 +18,10 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { getMonitoringSnapshot } from '../../features/monitoring/api/monitoringApi';
 import { getAlertRules, getAlerts, putAlertRules } from '../../features/alerts/api/alertsApi';
+import { getSourceConfig } from '../../features/config/api/configApi';
 import { formatDateTime, formatNumber } from '../../shared/lib/format';
 import { AlertRuleConfigDto } from '../../entities/alerts/model/types';
+import { SourceConfigDto } from '../../entities/config/model/types';
 import { SourceStatsDto } from '../../entities/monitoring/model/types';
 
 function getStatusColor(status: SourceStatsDto['status']): 'green' | 'orange' | 'red' {
@@ -35,6 +37,65 @@ function getStatusColor(status: SourceStatsDto['status']): 'green' | 'orange' | 
 
 const availableNotifierChannels = ['Console', 'File', 'EmailStub'] as const;
 const channelsParameterKey = 'channels';
+const priceThresholdRuleName = 'PriceThreshold';
+
+function buildRuleScopeKey(rule: Pick<AlertRuleConfigDto, 'ruleName' | 'exchange' | 'symbol'>): string {
+  return `${rule.ruleName}::${rule.exchange ?? '*'}::${rule.symbol ?? '*'}`;
+}
+
+function getAvailableScopes(config: SourceConfigDto | undefined): Array<{ exchange: string; symbol: string }> {
+  if (!config) {
+    return [];
+  }
+
+  const seen = new Set<string>();
+  const scopes: Array<{ exchange: string; symbol: string }> = [];
+
+  for (const profile of config.profiles) {
+    for (const symbol of profile.symbols) {
+      const key = `${profile.exchange}::${symbol}`;
+      if (seen.has(key)) {
+        continue;
+      }
+
+      seen.add(key);
+      scopes.push({ exchange: profile.exchange, symbol });
+    }
+  }
+
+  return scopes;
+}
+
+function normalizeRulesByTicker(items: AlertRuleConfigDto[], config: SourceConfigDto | undefined): AlertRuleConfigDto[] {
+  const availableScopes = getAvailableScopes(config);
+  const scopedPriceRules = items.filter((item) => item.ruleName === priceThresholdRuleName && item.exchange && item.symbol);
+  const legacyPriceTemplate = items.find((item) => item.ruleName === priceThresholdRuleName && (!item.exchange || !item.symbol));
+
+  const expandedLegacyPriceRules =
+    legacyPriceTemplate && availableScopes.length > 0
+      ? availableScopes.map((scope) => ({
+          ...legacyPriceTemplate,
+          exchange: scope.exchange,
+          symbol: scope.symbol,
+          parameters: { ...legacyPriceTemplate.parameters }
+        }))
+      : [];
+
+  const map = new Map<string, AlertRuleConfigDto>();
+
+  for (const item of [...scopedPriceRules, ...expandedLegacyPriceRules]) {
+    map.set(buildRuleScopeKey(item), item);
+  }
+
+  const nonPriceRules = items.filter((item) => item.ruleName !== priceThresholdRuleName);
+  const normalizedItems = [...nonPriceRules, ...map.values()];
+
+  return normalizedItems.sort((a, b) => {
+    const aKey = buildRuleScopeKey(a);
+    const bKey = buildRuleScopeKey(b);
+    return aKey.localeCompare(bKey);
+  });
+}
 
 function parseChannels(rawValue: string | undefined): string[] {
   if (!rawValue) {
@@ -90,12 +151,17 @@ export function MonitoringPage() {
     queryFn: getAlertRules
   });
 
+  const sourceConfigQuery = useQuery({
+    queryKey: ['source-config'],
+    queryFn: getSourceConfig
+  });
+
   useEffect(() => {
     if (rulesQuery.data) {
-      setEditingRules(rulesQuery.data.items);
+      setEditingRules(normalizeRulesByTicker(rulesQuery.data.items, sourceConfigQuery.data));
       setGlobalChannels(rulesQuery.data.globalChannels);
     }
-  }, [rulesQuery.data]);
+  }, [rulesQuery.data, sourceConfigQuery.data]);
 
   const saveRulesMutation = useMutation({
     mutationFn: () => putAlertRules({ items: editingRules, globalChannels }),
@@ -285,11 +351,13 @@ export function MonitoringPage() {
           </Form.Item>
 
           <Table
-            rowKey={(row) => row.ruleName}
+            rowKey={(row) => buildRuleScopeKey(row)}
             dataSource={editingRules}
             pagination={false}
             columns={[
               { title: 'Правило', dataIndex: 'ruleName' },
+              { title: 'Биржа', dataIndex: 'exchange', render: (value) => value ?? '-' },
+              { title: 'Тикер', dataIndex: 'symbol', render: (value) => value ?? '-' },
               {
                 title: 'Включено',
                 dataIndex: 'enabled',
@@ -299,7 +367,7 @@ export function MonitoringPage() {
                     onChange={(checked) => {
                       setEditingRules((prev) =>
                         prev.map((rule) =>
-                          rule.ruleName === row.ruleName
+                          buildRuleScopeKey(rule) === buildRuleScopeKey(row)
                             ? {
                                 ...rule,
                                 enabled: checked
@@ -322,7 +390,7 @@ export function MonitoringPage() {
                       const nextCsv = toChannelsCsv(channels);
                       setEditingRules((prev) =>
                         prev.map((rule) =>
-                          rule.ruleName === row.ruleName
+                          buildRuleScopeKey(rule) === buildRuleScopeKey(row)
                             ? {
                                 ...rule,
                                 parameters: {
@@ -349,14 +417,14 @@ export function MonitoringPage() {
                       .filter(([key]) => key !== channelsParameterKey)
                       .map(([key, paramValue]) => (
                       <Input
-                        key={`${row.ruleName}-${key}`}
+                        key={`${buildRuleScopeKey(row)}-${key}`}
                         addonBefore={key}
                         value={String(paramValue)}
                         onChange={(event) => {
                           const nextValue = event.target.value;
                           setEditingRules((prev) =>
                             prev.map((rule) =>
-                              rule.ruleName === row.ruleName
+                              buildRuleScopeKey(rule) === buildRuleScopeKey(row)
                                 ? {
                                     ...rule,
                                     parameters: {

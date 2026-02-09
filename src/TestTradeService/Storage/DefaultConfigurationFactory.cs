@@ -52,20 +52,33 @@ public static class DefaultConfigurationFactory
     /// <returns>Набор конфигураций правил.</returns>
     public static IReadOnlyCollection<AlertRuleConfig> CreateAlertRules()
     {
-        return
-        [
-            new AlertRuleConfig
+        var priceThresholdRules = CreateInstruments()
+            .Profiles
+            .Where(profile => profile.Transport == MarketDataSourceTransport.WebSocket)
+            .SelectMany(profile => profile.Symbols.Select(symbol => new
+            {
+                Exchange = profile.Exchange.ToString(),
+                Symbol = symbol,
+                Bounds = ResolvePriceBounds(symbol)
+            }))
+            .Where(item => item.Bounds is not null)
+            .Select(item => new AlertRuleConfig
             {
                 RuleName = "PriceThreshold",
                 Enabled = true,
-                Exchange = null,
-                Symbol = null,
+                Exchange = item.Exchange,
+                Symbol = item.Symbol,
                 Parameters = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
                 {
-                    ["min_price"] = "18000",
-                    ["max_price"] = "22000"
+                    ["min_price"] = item.Bounds!.Value.Min.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    ["max_price"] = item.Bounds!.Value.Max.ToString(System.Globalization.CultureInfo.InvariantCulture)
                 }
-            },
+            })
+            .ToArray();
+
+        return
+        [
+            ..priceThresholdRules,
             new AlertRuleConfig
             {
                 RuleName = "VolumeSpike",
@@ -91,5 +104,23 @@ public static class DefaultConfigurationFactory
                 }
             }
         ];
+    }
+
+    private static (decimal Min, decimal Max)? ResolvePriceBounds(string symbol)
+    {
+        if (string.IsNullOrWhiteSpace(symbol))
+            return null;
+
+        var upperSymbol = symbol.ToUpperInvariant();
+        if (upperSymbol.Contains("BTC", StringComparison.Ordinal) || upperSymbol.Contains("XBT", StringComparison.Ordinal))
+            return (10_000m, 200_000m);
+
+        if (upperSymbol.Contains("ETH", StringComparison.Ordinal))
+            return (500m, 10_000m);
+
+        if (upperSymbol.Contains("SOL", StringComparison.Ordinal))
+            return (10m, 1_000m);
+
+        return null;
     }
 }
