@@ -299,9 +299,15 @@ public sealed class AlertingServiceTests
 
         public IReadOnlyList<Alert> StoredAlerts => _alerts;
 
+        public Task StoreRawTicksAsync(IReadOnlyCollection<RawTick> rawTicks, CancellationToken cancellationToken) => Task.CompletedTask;
+
         public Task StoreRawTickAsync(RawTick rawTick, CancellationToken cancellationToken) => Task.CompletedTask;
 
+        public Task StoreTicksAsync(IReadOnlyCollection<NormalizedTick> ticks, CancellationToken cancellationToken) => Task.CompletedTask;
+
         public Task StoreTickAsync(NormalizedTick tick, CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task StoreAggregatesAsync(IReadOnlyCollection<AggregatedCandle> candles, CancellationToken cancellationToken) => Task.CompletedTask;
 
         public Task StoreAggregateAsync(AggregatedCandle candle, CancellationToken cancellationToken) => Task.CompletedTask;
 

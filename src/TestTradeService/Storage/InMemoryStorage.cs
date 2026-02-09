@@ -19,6 +19,22 @@ public sealed class InMemoryStorage : IStorage
     private readonly IReadOnlyCollection<AlertRuleConfig> _alertRules = DefaultConfigurationFactory.CreateAlertRules();
 
     /// <summary>
+    /// Сохраняет пакет сырых тиков.
+    /// </summary>
+    /// <param name="rawTicks">Набор сырых тиков.</param>
+    /// <param name="cancellationToken">Токен отмены.</param>
+    /// <returns>Задача пакетного сохранения сырых тиков.</returns>
+    public Task StoreRawTicksAsync(IReadOnlyCollection<RawTick> rawTicks, CancellationToken cancellationToken)
+    {
+        foreach (var rawTick in rawTicks)
+        {
+            _rawTicks.Add(rawTick);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
     /// Сохраняет сырой тик.
     /// </summary>
     /// <param name="rawTick">Сырой тик до нормализации.</param>
@@ -26,7 +42,22 @@ public sealed class InMemoryStorage : IStorage
     /// <returns>Задача сохранения сырого тика.</returns>
     public Task StoreRawTickAsync(RawTick rawTick, CancellationToken cancellationToken)
     {
-        _rawTicks.Add(rawTick);
+        return StoreRawTicksAsync(new[] { rawTick }, cancellationToken);
+    }
+
+    /// <summary>
+    /// Сохраняет пакет нормализованных тиков.
+    /// </summary>
+    /// <param name="ticks">Набор нормализованных тиков.</param>
+    /// <param name="cancellationToken">Токен отмены.</param>
+    /// <returns>Задача пакетного сохранения тиков.</returns>
+    public Task StoreTicksAsync(IReadOnlyCollection<NormalizedTick> ticks, CancellationToken cancellationToken)
+    {
+        foreach (var tick in ticks)
+        {
+            _ticks.Add(tick);
+        }
+
         return Task.CompletedTask;
     }
 
@@ -38,7 +69,22 @@ public sealed class InMemoryStorage : IStorage
     /// <returns>Задача сохранения тика.</returns>
     public Task StoreTickAsync(NormalizedTick tick, CancellationToken cancellationToken)
     {
-        _ticks.Add(tick);
+        return StoreTicksAsync(new[] { tick }, cancellationToken);
+    }
+
+    /// <summary>
+    /// Сохраняет пакет агрегированных свечей.
+    /// </summary>
+    /// <param name="candles">Набор агрегированных свечей.</param>
+    /// <param name="cancellationToken">Токен отмены.</param>
+    /// <returns>Задача пакетного сохранения свечей.</returns>
+    public Task StoreAggregatesAsync(IReadOnlyCollection<AggregatedCandle> candles, CancellationToken cancellationToken)
+    {
+        foreach (var candle in candles)
+        {
+            _aggregates.Add(candle);
+        }
+
         return Task.CompletedTask;
     }
 
@@ -50,8 +96,7 @@ public sealed class InMemoryStorage : IStorage
     /// <returns>Задача сохранения свечи.</returns>
     public Task StoreAggregateAsync(AggregatedCandle candle, CancellationToken cancellationToken)
     {
-        _aggregates.Add(candle);
-        return Task.CompletedTask;
+        return StoreAggregatesAsync(new[] { candle }, cancellationToken);
     }
 
     /// <summary>

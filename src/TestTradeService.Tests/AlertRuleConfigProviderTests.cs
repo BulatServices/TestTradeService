@@ -75,4 +75,41 @@ public sealed class AlertRuleConfigProviderTests
 
         Assert.Empty(parameters);
     }
+
+    /// <summary>
+    /// ѕровер€ет детерминированный выбор при нескольких правилах одинаковой специфичности.
+    /// </summary>
+    [Fact]
+    public void GetParameters_WhenSpecificityIsEqual_UsesStableTieBreaker()
+    {
+        var provider = new AlertRuleConfigProvider(new[]
+        {
+            new AlertRuleConfig
+            {
+                RuleName = "PriceThreshold",
+                Enabled = true,
+                Exchange = "KRAKEN",
+                Symbol = "XBT/USD",
+                Parameters = new Dictionary<string, string>
+                {
+                    ["min_price"] = "300"
+                }
+            },
+            new AlertRuleConfig
+            {
+                RuleName = "PriceThreshold",
+                Enabled = true,
+                Exchange = "kraken",
+                Symbol = "xbt/usd",
+                Parameters = new Dictionary<string, string>
+                {
+                    ["min_price"] = "100"
+                }
+            }
+        });
+
+        var parameters = provider.GetParameters("PriceThreshold", "Kraken-WebSocket", "XBT/USD");
+
+        Assert.Equal("100", parameters["min_price"]);
+    }
 }

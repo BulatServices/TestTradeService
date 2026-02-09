@@ -31,6 +31,28 @@ public sealed class MarketDataHub : Hub
     }
 
     /// <summary>
+    /// Подписывает текущее подключение на поток тиков.
+    /// </summary>
+    /// <returns>Задача активации подписки на поток.</returns>
+    public Task SubscribeStream()
+    {
+        _store.SetStreamSubscription(Context.ConnectionId, true);
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Отписывает текущее подключение от потока тиков.
+    /// </summary>
+    /// <returns>Задача деактивации подписки на поток.</returns>
+    public Task UnsubscribeStream()
+    {
+        _store.SetStreamSubscription(Context.ConnectionId, false);
+        _store.SetFilter(Context.ConnectionId, null, null);
+        _store.ClearSymbols(Context.ConnectionId);
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
     /// Подписывает текущее подключение на набор символов.
     /// </summary>
     /// <param name="symbols">Список символов.</param>

@@ -343,7 +343,7 @@ export function MonitoringPage() {
         </Space>
 
         <Table
-          rowKey={(row) => `${row.rule}-${row.source}-${row.timestamp}`}
+          rowKey={(row) => `${row.rule}-${row.source}-${row.symbol}-${row.timestamp}`}
           dataSource={alertsQuery.data?.items ?? []}
           pagination={{ pageSize: 10 }}
           columns={[

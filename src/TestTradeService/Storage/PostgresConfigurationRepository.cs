@@ -80,11 +80,13 @@ public sealed class PostgresConfigurationRepository : IConfigurationRepository
         const string sqlDefinitions = """
             select id, rule_name as RuleName, exchange, symbol, is_enabled as Enabled
             from meta.alert_rule_definitions
+            order by lower(rule_name), coalesce(lower(exchange), ''), coalesce(lower(symbol), ''), id
             """;
 
         const string sqlParameters = """
             select rule_definition_id as RuleDefinitionId, param_key as ParamKey, param_value as ParamValue
             from meta.alert_rule_parameters
+            order by rule_definition_id, lower(param_key), param_value
             """;
 
         await using var connection = await _metadataDataSource.DataSource.OpenConnectionAsync(cancellationToken);

@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -11,18 +11,34 @@ using Xunit;
 namespace TestTradeService.Tests;
 
 /// <summary>
-/// Приемочные тесты соответствия ключевым нефункциональным требованиям.
+/// РџСЂРёРµРјРѕС‡РЅС‹Рµ С‚РµСЃС‚С‹ СЃРѕРѕС‚РІРµС‚СЃС‚РІРёСЏ РєР»СЋС‡РµРІС‹Рј РЅРµС„СѓРЅРєС†РёРѕРЅР°Р»СЊРЅС‹Рј С‚СЂРµР±РѕРІР°РЅРёСЏРј.
 /// </summary>
 public sealed class RequirementsAcceptanceTests
 {
+    private static readonly string[] BybitSymbols =
+    [
+        "BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT", "DOGEUSDT", "LTCUSDT",
+        "DOTUSDT", "AVAXUSDT", "LINKUSDT", "MATICUSDT"
+    ];
+    private static readonly string[] CoinbaseSymbols =
+    [
+        "BTC-USD", "ETH-USD", "SOL-USD", "AVAX-USD", "XRP-USD", "ADA-USD", "DOGE-USD", "LTC-USD",
+        "DOT-USD", "LINK-USD", "BCH-USD", "ATOM-USD"
+    ];
+    private static readonly string[] KrakenSymbols =
+    [
+        "XBT/USD", "ETH/USD", "SOL/USD", "ADA/USD", "XRP/USD", "DOGE/USD", "LTC/USD", "DOT/USD",
+        "LINK/USD", "AVAX/USD", "BCH/USD", "ATOM/USD"
+    ];
+
     /// <summary>
-    /// Проверяет, что конвейер обрабатывает не менее 100 тиков/сек при потоке от трех источников.
+    /// РџСЂРѕРІРµСЂСЏРµС‚, С‡С‚Рѕ РєРѕРЅРІРµР№РµСЂ РѕР±СЂР°Р±Р°С‚С‹РІР°РµС‚ РЅРµ РјРµРЅРµРµ 100 С‚РёРєРѕРІ/СЃРµРє РїСЂРё РїРѕС‚РѕРєРµ РѕС‚ С‚СЂРµС… РёСЃС‚РѕС‡РЅРёРєРѕРІ.
     /// </summary>
     [Fact]
     public async Task Load_ThreeSources_AchievesAtLeast100TicksPerSec()
     {
-        const int ticksPerSource = 500;
-        var totalTicks = ticksPerSource * 3;
+        const int ticksPerSymbol = 250;
+        var totalTicks = (BybitSymbols.Length + CoinbaseSymbols.Length + KrakenSymbols.Length) * ticksPerSymbol;
 
         var pipeline = CreatePipeline();
         var channel = Channel.CreateBounded<Tick>(new BoundedChannelOptions(10_000)
@@ -35,12 +51,13 @@ public sealed class RequirementsAcceptanceTests
         var pipelineTask = pipeline.StartAsync(channel.Reader, CancellationToken.None);
         var timestamp = DateTimeOffset.UtcNow;
 
-        var producers = new[]
-        {
-            ProduceTicksAsync(channel.Writer, "Bybit-WebSocket", "BTCUSDT", ticksPerSource, timestamp),
-            ProduceTicksAsync(channel.Writer, "Coinbase-WebSocket", "BTC-USD", ticksPerSource, timestamp),
-            ProduceTicksAsync(channel.Writer, "Kraken-WebSocket", "XBT/USD", ticksPerSource, timestamp)
-        };
+        var producers = BybitSymbols
+            .Select(symbol => ProduceTicksAsync(channel.Writer, "Bybit-WebSocket", symbol, ticksPerSymbol, timestamp))
+            .Concat(CoinbaseSymbols.Select(symbol =>
+                ProduceTicksAsync(channel.Writer, "Coinbase-WebSocket", symbol, ticksPerSymbol, timestamp)))
+            .Concat(KrakenSymbols.Select(symbol =>
+                ProduceTicksAsync(channel.Writer, "Kraken-WebSocket", symbol, ticksPerSymbol, timestamp)))
+            .ToArray();
 
         var stopwatch = Stopwatch.StartNew();
         await Task.WhenAll(producers);
@@ -49,11 +66,55 @@ public sealed class RequirementsAcceptanceTests
         stopwatch.Stop();
 
         var throughput = totalTicks / Math.Max(0.001, stopwatch.Elapsed.TotalSeconds);
-        Assert.True(throughput >= 100, $"Ожидалось >= 100 ticks/sec, фактически {throughput:F2} ticks/sec.");
+        Assert.True(throughput >= 100, $"РћР¶РёРґР°Р»РѕСЃСЊ >= 100 ticks/sec, С„Р°РєС‚РёС‡РµСЃРєРё {throughput:F2} ticks/sec.");
     }
 
     /// <summary>
-    /// Проверяет, что падение одного источника не блокирует обработку остальных источников.
+    /// Проверяет, что оптимизированные настройки конвейера дают не менее чем трехкратный прирост throughput относительно baseline.
+    /// </summary>
+    [Fact]
+    public async Task Load_OptimizedPipeline_AchievesAtLeastThreeTimesBaselineThroughput()
+    {
+        const int ticksPerSymbol = 120;
+        var timestamp = DateTimeOffset.UtcNow;
+
+        var baselineThroughput = await MeasureThroughputAsync(
+            CreatePipeline(
+                new SimulatedBatchLatencyStorage(TimeSpan.FromMilliseconds(2)),
+                new PipelinePerformanceOptions
+                {
+                    PartitionCount = 1,
+                    BatchSize = 1,
+                    FlushInterval = TimeSpan.FromMilliseconds(10),
+                    MaxInMemoryBatches = 4,
+                    AlertingConcurrency = 1
+                }),
+            BybitSymbols,
+            ticksPerSymbol,
+            timestamp);
+
+        var optimizedThroughput = await MeasureThroughputAsync(
+            CreatePipeline(
+                new SimulatedBatchLatencyStorage(TimeSpan.FromMilliseconds(2)),
+                new PipelinePerformanceOptions
+                {
+                    PartitionCount = Math.Max(2, Environment.ProcessorCount),
+                    BatchSize = 256,
+                    FlushInterval = TimeSpan.FromMilliseconds(250),
+                    MaxInMemoryBatches = 16,
+                    AlertingConcurrency = Math.Max(2, Environment.ProcessorCount / 2)
+                }),
+            BybitSymbols,
+            ticksPerSymbol,
+            timestamp);
+
+        var expected = Math.Max(100d, baselineThroughput * 3d);
+        Assert.True(
+            optimizedThroughput >= expected,
+            $"Ожидалось >= {expected:F2} ticks/sec, baseline={baselineThroughput:F2}, optimized={optimizedThroughput:F2}.");
+    }
+    /// <summary>
+    /// РџСЂРѕРІРµСЂСЏРµС‚, С‡С‚Рѕ РїР°РґРµРЅРёРµ РѕРґРЅРѕРіРѕ РёСЃС‚РѕС‡РЅРёРєР° РЅРµ Р±Р»РѕРєРёСЂСѓРµС‚ РѕР±СЂР°Р±РѕС‚РєСѓ РѕСЃС‚Р°Р»СЊРЅС‹С… РёСЃС‚РѕС‡РЅРёРєРѕРІ.
     /// </summary>
     [Fact]
     public async Task Load_OneSourceFails_OthersContinueProcessing()
@@ -79,7 +140,7 @@ public sealed class RequirementsAcceptanceTests
     }
 
     /// <summary>
-    /// Проверяет, что при штатной остановке конвейер успевает дренировать принятые тики.
+    /// РџСЂРѕРІРµСЂСЏРµС‚, С‡С‚Рѕ РїСЂРё С€С‚Р°С‚РЅРѕР№ РѕСЃС‚Р°РЅРѕРІРєРµ РєРѕРЅРІРµР№РµСЂ СѓСЃРїРµРІР°РµС‚ РґСЂРµРЅРёСЂРѕРІР°С‚СЊ РїСЂРёРЅСЏС‚С‹Рµ С‚РёРєРё.
     /// </summary>
     [Fact]
     public async Task Shutdown_DrainsAcceptedTicks_BeforeExit()
@@ -99,7 +160,7 @@ public sealed class RequirementsAcceptanceTests
     }
 
     /// <summary>
-    /// Проверяет, что при истечении таймаута дренажа воркер фиксирует потерянные тики.
+    /// РџСЂРѕРІРµСЂСЏРµС‚, С‡С‚Рѕ РїСЂРё РёСЃС‚РµС‡РµРЅРёРё С‚Р°Р№РјР°СѓС‚Р° РґСЂРµРЅР°Р¶Р° РІРѕСЂРєРµСЂ С„РёРєСЃРёСЂСѓРµС‚ РїРѕС‚РµСЂСЏРЅРЅС‹Рµ С‚РёРєРё.
     /// </summary>
     [Fact]
     public async Task Shutdown_Timeout_ReportsDroppedCount()
@@ -117,7 +178,7 @@ public sealed class RequirementsAcceptanceTests
     }
 
     /// <summary>
-    /// Проверяет, что воркер и конвейер зависят от абстракций, а не от конкретных реализаций.
+    /// РџСЂРѕРІРµСЂСЏРµС‚, С‡С‚Рѕ РІРѕСЂРєРµСЂ Рё РєРѕРЅРІРµР№РµСЂ Р·Р°РІРёСЃСЏС‚ РѕС‚ Р°Р±СЃС‚СЂР°РєС†РёР№, Р° РЅРµ РѕС‚ РєРѕРЅРєСЂРµС‚РЅС‹С… СЂРµР°Р»РёР·Р°С†РёР№.
     /// </summary>
     [Fact]
     public void Architecture_WorkerAndPipeline_DependOnAbstractionsOnly()
@@ -135,11 +196,11 @@ public sealed class RequirementsAcceptanceTests
         Assert.DoesNotContain(typeof(DataPipeline), workerParams);
     }
 
-    private static DataPipeline CreatePipeline()
+    private static DataPipeline CreatePipeline(IStorage? storage = null, PipelinePerformanceOptions? performanceOptions = null)
     {
         return new DataPipeline(
             new NoOpAggregationService(),
-            new NoOpStorage(),
+            storage ?? new NoOpStorage(),
             new NoOpAlertingService(),
             new NoOpMonitoringService(),
             new NoOpMarketDataEventBus(),
@@ -152,25 +213,26 @@ public sealed class RequirementsAcceptanceTests
                         Exchange = MarketExchange.Bybit,
                         MarketType = MarketType.Spot,
                         Transport = MarketDataSourceTransport.WebSocket,
-                        Symbols = new[] { "BTCUSDT" }
+                        Symbols = BybitSymbols
                     },
                     new MarketInstrumentProfile
                     {
                         Exchange = MarketExchange.Coinbase,
                         MarketType = MarketType.Spot,
                         Transport = MarketDataSourceTransport.WebSocket,
-                        Symbols = new[] { "BTC-USD" }
+                        Symbols = CoinbaseSymbols
                     },
                     new MarketInstrumentProfile
                     {
                         Exchange = MarketExchange.Kraken,
                         MarketType = MarketType.Spot,
                         Transport = MarketDataSourceTransport.WebSocket,
-                        Symbols = new[] { "XBT/USD" }
+                        Symbols = KrakenSymbols
                     }
                 ]
             },
-            NullLogger<DataPipeline>.Instance);
+            NullLogger<DataPipeline>.Instance,
+            performanceOptions);
     }
 
     private static TradingSystemWorker CreateWorker(
@@ -210,6 +272,34 @@ public sealed class RequirementsAcceptanceTests
         }
     }
 
+    private static async Task<double> MeasureThroughputAsync(
+        DataPipeline pipeline,
+        IReadOnlyCollection<string> symbols,
+        int ticksPerSymbol,
+        DateTimeOffset timestamp)
+    {
+        var channel = Channel.CreateBounded<Tick>(new BoundedChannelOptions(10_000)
+        {
+            FullMode = BoundedChannelFullMode.Wait,
+            SingleReader = true,
+            SingleWriter = false
+        });
+
+        var pipelineTask = pipeline.StartAsync(channel.Reader, CancellationToken.None);
+        var producers = symbols
+            .Select(symbol => ProduceTicksAsync(channel.Writer, "Bybit-WebSocket", symbol, ticksPerSymbol, timestamp))
+            .ToArray();
+
+        var stopwatch = Stopwatch.StartNew();
+        await Task.WhenAll(producers);
+        channel.Writer.Complete();
+        await pipelineTask;
+        stopwatch.Stop();
+
+        var totalTicks = symbols.Count * ticksPerSymbol;
+        return totalTicks / Math.Max(0.001, stopwatch.Elapsed.TotalSeconds);
+    }
+
     private static async Task WaitUntilAsync(Func<bool> predicate, TimeSpan timeout)
     {
         var deadline = DateTime.UtcNow + timeout;
@@ -229,22 +319,26 @@ public sealed class RequirementsAcceptanceTests
         private readonly TimeSpan _perTickDelay;
         private long _consumedTickCount;
 
+        /// <summary>
+        /// РЎРѕР·РґР°РµС‚ С‚РµСЃС‚РѕРІС‹Р№ РєРѕРЅРІРµР№РµСЂ СЃ РѕРїС†РёРѕРЅР°Р»СЊРЅРѕР№ Р·Р°РґРµСЂР¶РєРѕР№ РѕР±СЂР°Р±РѕС‚РєРё РѕРґРЅРѕРіРѕ С‚РёРєР°.
+        /// </summary>
+        /// <param name="perTickDelay">Р—Р°РґРµСЂР¶РєР° РЅР° РѕР±СЂР°Р±РѕС‚РєСѓ РѕРґРЅРѕРіРѕ С‚РёРєР°; РµСЃР»Рё <see langword="null"/>, Р·Р°РґРµСЂР¶РєР° РЅРµ РїСЂРёРјРµРЅСЏРµС‚СЃСЏ.</param>
         public CountingPipeline(TimeSpan? perTickDelay = null)
         {
             _perTickDelay = perTickDelay ?? TimeSpan.Zero;
         }
 
         /// <summary>
-        /// Возвращает количество считанных тиков.
+        /// Р’РѕР·РІСЂР°С‰Р°РµС‚ РєРѕР»РёС‡РµСЃС‚РІРѕ СЃС‡РёС‚Р°РЅРЅС‹С… С‚РёРєРѕРІ.
         /// </summary>
         public long ConsumedTickCount => Interlocked.Read(ref _consumedTickCount);
 
         /// <summary>
-        /// Считывает тики из канала и увеличивает счетчик.
+        /// РЎС‡РёС‚С‹РІР°РµС‚ С‚РёРєРё РёР· РєР°РЅР°Р»Р° Рё СѓРІРµР»РёС‡РёРІР°РµС‚ СЃС‡РµС‚С‡РёРє.
         /// </summary>
-        /// <param name="reader">Канал с тиками.</param>
-        /// <param name="cancellationToken">Токен отмены.</param>
-        /// <returns>Задача обработки тиков.</returns>
+        /// <param name="reader">РљР°РЅР°Р» СЃ С‚РёРєР°РјРё.</param>
+        /// <param name="cancellationToken">РўРѕРєРµРЅ РѕС‚РјРµРЅС‹.</param>
+        /// <returns>Р—Р°РґР°С‡Р° РѕР±СЂР°Р±РѕС‚РєРё С‚РёРєРѕРІ.</returns>
         public async Task StartAsync(ChannelReader<Tick> reader, CancellationToken cancellationToken)
         {
             await foreach (var _ in reader.ReadAllAsync(cancellationToken))
@@ -266,6 +360,13 @@ public sealed class RequirementsAcceptanceTests
         private readonly int _count;
         private int _writtenTicks;
 
+        /// <summary>
+        /// РЎРѕР·РґР°РµС‚ С‚РµСЃС‚РѕРІС‹Р№ РёСЃС‚РѕС‡РЅРёРє, РєРѕС‚РѕСЂС‹Р№ РїСѓР±Р»РёРєСѓРµС‚ Р·Р°РґР°РЅРЅРѕРµ РєРѕР»РёС‡РµСЃС‚РІРѕ С‚РёРєРѕРІ Рё РѕР¶РёРґР°РµС‚ РѕСЃС‚Р°РЅРѕРІРєРё.
+        /// </summary>
+        /// <param name="name">РРјСЏ РёСЃС‚РѕС‡РЅРёРєР°.</param>
+        /// <param name="exchange">Р‘РёСЂР¶Р° РёСЃС‚РѕС‡РЅРёРєР°.</param>
+        /// <param name="symbol">РўРёРєРµСЂ РґР»СЏ РіРµРЅРµСЂР°С†РёРё С‚РёРєРѕРІ.</param>
+        /// <param name="count">РљРѕР»РёС‡РµСЃС‚РІРѕ С‚РёРєРѕРІ РґР»СЏ РїСѓР±Р»РёРєР°С†РёРё.</param>
         public BurstThenWaitSource(string name, MarketExchange exchange, string symbol, int count)
         {
             _name = name;
@@ -275,7 +376,7 @@ public sealed class RequirementsAcceptanceTests
         }
 
         /// <summary>
-        /// Возвращает количество успешно записанных тиков.
+        /// Р’РѕР·РІСЂР°С‰Р°РµС‚ РєРѕР»РёС‡РµСЃС‚РІРѕ СѓСЃРїРµС€РЅРѕ Р·Р°РїРёСЃР°РЅРЅС‹С… С‚РёРєРѕРІ.
         /// </summary>
         public int WrittenTicks => Volatile.Read(ref _writtenTicks);
 
@@ -315,6 +416,11 @@ public sealed class RequirementsAcceptanceTests
         private readonly MarketExchange _exchange;
         private int _startAttempts;
 
+        /// <summary>
+        /// РЎРѕР·РґР°РµС‚ С‚РµСЃС‚РѕРІС‹Р№ РёСЃС‚РѕС‡РЅРёРє, РєРѕС‚РѕСЂС‹Р№ РІС‹Р±СЂР°СЃС‹РІР°РµС‚ РёСЃРєР»СЋС‡РµРЅРёРµ РїСЂРё Р·Р°РїСѓСЃРєРµ.
+        /// </summary>
+        /// <param name="name">РРјСЏ РёСЃС‚РѕС‡РЅРёРєР°.</param>
+        /// <param name="exchange">Р‘РёСЂР¶Р° РёСЃС‚РѕС‡РЅРёРєР°.</param>
         public ThrowingSource(string name, MarketExchange exchange)
         {
             _name = name;
@@ -322,7 +428,7 @@ public sealed class RequirementsAcceptanceTests
         }
 
         /// <summary>
-        /// Возвращает количество запусков источника.
+        /// Р’РѕР·РІСЂР°С‰Р°РµС‚ РєРѕР»РёС‡РµСЃС‚РІРѕ Р·Р°РїСѓСЃРєРѕРІ РёСЃС‚РѕС‡РЅРёРєР°.
         /// </summary>
         public int StartAttempts => Volatile.Read(ref _startAttempts);
 
@@ -370,9 +476,15 @@ public sealed class RequirementsAcceptanceTests
 
     private sealed class NoOpStorage : IStorage
     {
+        Task IStorage.StoreRawTicksAsync(IReadOnlyCollection<RawTick> rawTicks, CancellationToken cancellationToken) => Task.CompletedTask;
+
         Task IStorage.StoreRawTickAsync(RawTick rawTick, CancellationToken cancellationToken) => Task.CompletedTask;
 
+        Task IStorage.StoreTicksAsync(IReadOnlyCollection<NormalizedTick> ticks, CancellationToken cancellationToken) => Task.CompletedTask;
+
         Task IStorage.StoreTickAsync(NormalizedTick tick, CancellationToken cancellationToken) => Task.CompletedTask;
+
+        Task IStorage.StoreAggregatesAsync(IReadOnlyCollection<AggregatedCandle> candles, CancellationToken cancellationToken) => Task.CompletedTask;
 
         Task IStorage.StoreAggregateAsync(AggregatedCandle candle, CancellationToken cancellationToken) => Task.CompletedTask;
 
@@ -388,6 +500,63 @@ public sealed class RequirementsAcceptanceTests
             => Task.FromResult((IReadOnlyCollection<InstrumentMetadata>)Array.Empty<InstrumentMetadata>());
 
         Task<IReadOnlyCollection<AlertRuleConfig>> IStorage.GetAlertRulesAsync(CancellationToken cancellationToken)
+            => Task.FromResult((IReadOnlyCollection<AlertRuleConfig>)Array.Empty<AlertRuleConfig>());
+    }
+
+    private sealed class SimulatedBatchLatencyStorage : IStorage
+    {
+        private readonly TimeSpan _batchDelay;
+
+        public SimulatedBatchLatencyStorage(TimeSpan batchDelay)
+        {
+            _batchDelay = batchDelay;
+        }
+
+        public async Task StoreRawTicksAsync(IReadOnlyCollection<RawTick> rawTicks, CancellationToken cancellationToken)
+        {
+            if (rawTicks.Count > 0)
+            {
+                await Task.Delay(_batchDelay, cancellationToken);
+            }
+        }
+
+        public Task StoreRawTickAsync(RawTick rawTick, CancellationToken cancellationToken)
+            => StoreRawTicksAsync(new[] { rawTick }, cancellationToken);
+
+        public async Task StoreTicksAsync(IReadOnlyCollection<NormalizedTick> ticks, CancellationToken cancellationToken)
+        {
+            if (ticks.Count > 0)
+            {
+                await Task.Delay(_batchDelay, cancellationToken);
+            }
+        }
+
+        public Task StoreTickAsync(NormalizedTick tick, CancellationToken cancellationToken)
+            => StoreTicksAsync(new[] { tick }, cancellationToken);
+
+        public async Task StoreAggregatesAsync(IReadOnlyCollection<AggregatedCandle> candles, CancellationToken cancellationToken)
+        {
+            if (candles.Count > 0)
+            {
+                await Task.Delay(_batchDelay, cancellationToken);
+            }
+        }
+
+        public Task StoreAggregateAsync(AggregatedCandle candle, CancellationToken cancellationToken)
+            => StoreAggregatesAsync(new[] { candle }, cancellationToken);
+
+        public Task StoreInstrumentAsync(InstrumentMetadata metadata, CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task StoreSourceStatusAsync(SourceStatus status, CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task StoreSourceStatusEventAsync(SourceStatus status, CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task StoreAlertAsync(Alert alert, CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task<IReadOnlyCollection<InstrumentMetadata>> GetInstrumentsAsync(CancellationToken cancellationToken)
+            => Task.FromResult((IReadOnlyCollection<InstrumentMetadata>)Array.Empty<InstrumentMetadata>());
+
+        public Task<IReadOnlyCollection<AlertRuleConfig>> GetAlertRulesAsync(CancellationToken cancellationToken)
             => Task.FromResult((IReadOnlyCollection<AlertRuleConfig>)Array.Empty<AlertRuleConfig>());
     }
 
@@ -455,3 +624,5 @@ public sealed class RequirementsAcceptanceTests
         }
     }
 }
+
+

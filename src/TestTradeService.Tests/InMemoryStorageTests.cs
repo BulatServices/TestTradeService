@@ -132,4 +132,91 @@ public sealed class InMemoryStorageTests
             Message = null
         }, CancellationToken.None);
     }
+
+    /// <summary>
+    /// Проверяет пакетное сохранение сырых тиков, нормализованных тиков и свечей.
+    /// </summary>
+    [Fact]
+    public async Task StoreBatchMethods_WhenCalled_Completes()
+    {
+        var storage = new InMemoryStorage();
+        var now = DateTimeOffset.UtcNow;
+
+        await storage.StoreRawTicksAsync(
+            new[]
+            {
+                new RawTick
+                {
+                    Exchange = "Bybit",
+                    Source = "Bybit-WebSocket",
+                    Symbol = "BTCUSDT",
+                    MarketType = "Spot",
+                    Price = 100m,
+                    Volume = 1m,
+                    TradeId = "r1",
+                    EventTimestamp = now,
+                    ReceivedAt = now,
+                    Payload = "{}",
+                    Metadata = null
+                },
+                new RawTick
+                {
+                    Exchange = "Bybit",
+                    Source = "Bybit-WebSocket",
+                    Symbol = "ETHUSDT",
+                    MarketType = "Spot",
+                    Price = 200m,
+                    Volume = 2m,
+                    TradeId = "r2",
+                    EventTimestamp = now,
+                    ReceivedAt = now,
+                    Payload = "{}",
+                    Metadata = null
+                }
+            },
+            CancellationToken.None);
+
+        await storage.StoreTicksAsync(
+            new[]
+            {
+                new NormalizedTick
+                {
+                    Source = "Bybit-WebSocket",
+                    Symbol = "BTCUSDT",
+                    Price = 100m,
+                    Volume = 1m,
+                    Timestamp = now,
+                    Fingerprint = "n1"
+                },
+                new NormalizedTick
+                {
+                    Source = "Bybit-WebSocket",
+                    Symbol = "ETHUSDT",
+                    Price = 200m,
+                    Volume = 2m,
+                    Timestamp = now,
+                    Fingerprint = "n2"
+                }
+            },
+            CancellationToken.None);
+
+        await storage.StoreAggregatesAsync(
+            new[]
+            {
+                new AggregatedCandle
+                {
+                    Source = "Bybit-WebSocket",
+                    Symbol = "BTCUSDT",
+                    WindowStart = now,
+                    Window = TimeSpan.FromMinutes(1),
+                    Open = 100m,
+                    High = 101m,
+                    Low = 99m,
+                    Close = 100.5m,
+                    Volume = 3m,
+                    Count = 2
+                }
+            },
+            CancellationToken.None);
+    }
 }

@@ -8,7 +8,9 @@ namespace TestTradeService.Services;
 public sealed class TickDeduplicator
 {
     private readonly TimeSpan _ttl = TimeSpan.FromMinutes(5);
-    private readonly Dictionary<string, DateTimeOffset> _seenAtUtc = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, long> _seenAtEpochSeconds = new(StringComparer.Ordinal);
+    private readonly Queue<(string Fingerprint, long SeenAtEpochSeconds)> _cleanupQueue = new();
+    private long _nextCleanupEpochSeconds;
 
     /// <summary>
     /// Проверяет тик на дубликат и регистрирует его отпечаток при первом появлении.
@@ -17,24 +19,44 @@ public sealed class TickDeduplicator
     /// <returns><c>true</c>, если тик уже встречался.</returns>
     public bool IsDuplicate(NormalizedTick tick)
     {
-        var now = DateTimeOffset.UtcNow;
-        Cleanup(now);
-
-        if (_seenAtUtc.ContainsKey(tick.Fingerprint))
+        var nowEpochSeconds = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        if (nowEpochSeconds >= _nextCleanupEpochSeconds)
         {
-            return true;
+            Cleanup(nowEpochSeconds);
         }
 
-        _seenAtUtc[tick.Fingerprint] = now;
+        if (_seenAtEpochSeconds.TryGetValue(tick.Fingerprint, out var seenAtEpochSeconds))
+        {
+            if (nowEpochSeconds - seenAtEpochSeconds <= (long)_ttl.TotalSeconds)
+            {
+                return true;
+            }
+        }
+
+        _seenAtEpochSeconds[tick.Fingerprint] = nowEpochSeconds;
+        _cleanupQueue.Enqueue((tick.Fingerprint, nowEpochSeconds));
         return false;
     }
 
-    private void Cleanup(DateTimeOffset now)
+    private void Cleanup(long nowEpochSeconds)
     {
-        var expired = _seenAtUtc.Where(pair => now - pair.Value > _ttl).Select(pair => pair.Key).ToList();
-        foreach (var key in expired)
+        var ttlSeconds = (long)_ttl.TotalSeconds;
+        while (_cleanupQueue.Count > 0)
         {
-            _seenAtUtc.Remove(key);
+            var entry = _cleanupQueue.Peek();
+            if (nowEpochSeconds - entry.SeenAtEpochSeconds <= ttlSeconds)
+            {
+                break;
+            }
+
+            _cleanupQueue.Dequeue();
+            if (_seenAtEpochSeconds.TryGetValue(entry.Fingerprint, out var currentSeenAt)
+                && currentSeenAt == entry.SeenAtEpochSeconds)
+            {
+                _seenAtEpochSeconds.Remove(entry.Fingerprint);
+            }
         }
+
+        _nextCleanupEpochSeconds = nowEpochSeconds + 5;
     }
 }

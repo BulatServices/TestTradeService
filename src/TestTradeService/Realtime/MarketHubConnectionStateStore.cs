@@ -10,6 +10,17 @@ public sealed class MarketHubConnectionStateStore
     private readonly ConcurrentDictionary<string, ClientSubscriptionState> _states = new(StringComparer.Ordinal);
 
     /// <summary>
+    /// Переключает подписку подключения на поток тиков.
+    /// </summary>
+    /// <param name="connectionId">Идентификатор подключения.</param>
+    /// <param name="isSubscribed">Признак активной подписки на поток.</param>
+    public void SetStreamSubscription(string connectionId, bool isSubscribed)
+    {
+        var state = _states.GetOrAdd(connectionId, _ => new ClientSubscriptionState());
+        state.StreamSubscribed = isSubscribed;
+    }
+
+    /// <summary>
     /// Устанавливает фильтр подключения.
     /// </summary>
     /// <param name="connectionId">Идентификатор подключения.</param>
@@ -69,6 +80,23 @@ public sealed class MarketHubConnectionStateStore
     }
 
     /// <summary>
+    /// Очищает явные подписки подключения на символы.
+    /// </summary>
+    /// <param name="connectionId">Идентификатор подключения.</param>
+    public void ClearSymbols(string connectionId)
+    {
+        if (!_states.TryGetValue(connectionId, out var state))
+        {
+            return;
+        }
+
+        lock (state.Sync)
+        {
+            state.Symbols.Clear();
+        }
+    }
+
+    /// <summary>
     /// Удаляет состояние подключения.
     /// </summary>
     /// <param name="connectionId">Идентификатор подключения.</param>
@@ -89,6 +117,7 @@ public sealed class MarketHubConnectionStateStore
             lock (pair.Value.Sync)
             {
                 snapshot[pair.Key] = new ClientSubscriptionSnapshot(
+                    pair.Value.StreamSubscribed,
                     pair.Value.Exchange,
                     pair.Value.Symbol,
                     pair.Value.Symbols.ToArray());
@@ -106,6 +135,7 @@ public sealed class MarketHubConnectionStateStore
     private sealed class ClientSubscriptionState
     {
         public object Sync { get; } = new();
+        public bool StreamSubscribed { get; set; }
         public string? Exchange { get; set; }
         public string? Symbol { get; set; }
         public HashSet<string> Symbols { get; } = new(StringComparer.OrdinalIgnoreCase);
@@ -115,7 +145,12 @@ public sealed class MarketHubConnectionStateStore
 /// <summary>
 /// Снимок подписок одного SignalR-подключения.
 /// </summary>
+/// <param name="StreamSubscribed">Признак подписки на поток тиков.</param>
 /// <param name="Exchange">Фильтр по бирже.</param>
 /// <param name="Symbol">Фильтр по символу.</param>
 /// <param name="Symbols">Явные подписки на символы.</param>
-public sealed record ClientSubscriptionSnapshot(string? Exchange, string? Symbol, IReadOnlyCollection<string> Symbols);
+public sealed record ClientSubscriptionSnapshot(
+    bool StreamSubscribed,
+    string? Exchange,
+    string? Symbol,
+    IReadOnlyCollection<string> Symbols);

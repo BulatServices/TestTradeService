@@ -1,6 +1,5 @@
 ﻿import { useEffect, useMemo, useRef, useState } from 'react';
-import { Card, Col, Row, Select, Space, Statistic, Table, Typography, Button } from 'antd';
-import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Button, Card, Col, Row, Select, Space, Statistic, Table, Typography } from 'antd';
 import { tickEventSchema, TickEventDto } from '../../entities/stream/model/types';
 import { useMarketHubContext } from '../../shared/signalr/MarketHubProvider';
 import { RingBuffer } from '../../shared/lib/ringBuffer';
@@ -8,13 +7,113 @@ import { formatDateTime, formatNumber } from '../../shared/lib/format';
 import { percentile } from '../../shared/lib/stats';
 
 const MAX_TICKS = 500;
+const MAX_CHART_TICKS = 120;
+const DEFAULT_TICKS_PER_CANDLE = 5;
+const MAX_PERFORMANCE_POINTS = 120;
+const PERFORMANCE_Y_TICKS = 5;
 
 type StreamTickRow = TickEventDto & {
   rowId: string;
 };
 
+type StreamCandle = {
+  key: string;
+  time: string;
+  timestamp: string;
+  rising: boolean;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+};
+
+type PerformancePoint = {
+  key: string;
+  timeLabel: string;
+  messagesPerSecond: number;
+  delayP95Ms: number;
+};
+
+type PerformanceYAxisTick = {
+  key: string;
+  y: number;
+  messagesValue: number;
+  delayValue: number;
+};
+
+function normalizeSymbol(value: string): string {
+  return value.trim().toUpperCase();
+}
+
+export function calculateClientDelayMs(tickTimestamp: string, clientReceivedAtMs: number): number {
+  const tickTimestampMs = new Date(tickTimestamp).getTime();
+  return Math.max(0, clientReceivedAtMs - tickTimestampMs);
+}
+
+export function getDeterministicChartSymbol(ticks: StreamTickRow[], selectedSymbol?: string): string | undefined {
+  if (selectedSymbol) {
+    return selectedSymbol;
+  }
+
+  const symbols = Array.from(new Set(ticks.map((item) => item.symbol)))
+    .filter((item) => item.trim().length > 0)
+    .sort((a, b) => a.localeCompare(b, 'en', { sensitivity: 'base' }));
+
+  return symbols[0];
+}
+
+export function buildCandles(
+  ticks: StreamTickRow[],
+  chartSymbol?: string,
+  ticksPerCandle = DEFAULT_TICKS_PER_CANDLE
+): { symbol?: string; candles: StreamCandle[]; max: number; min: number } {
+  if (!chartSymbol) {
+    return { symbol: undefined, candles: [], max: 0, min: 0 };
+  }
+
+  const symbolKey = normalizeSymbol(chartSymbol);
+  const symbolTicks = ticks
+    .filter((item) => normalizeSymbol(item.symbol) === symbolKey)
+    .slice(-MAX_CHART_TICKS);
+
+  if (!symbolTicks.length) {
+    return { symbol: chartSymbol, candles: [], max: 0, min: 0 };
+  }
+
+  const candles: StreamCandle[] = [];
+  const safeTicksPerCandle = Math.max(1, Math.floor(ticksPerCandle));
+
+  for (let i = 0; i < symbolTicks.length; i += safeTicksPerCandle) {
+    const chunk = symbolTicks.slice(i, i + safeTicksPerCandle);
+    const firstTick = chunk[0];
+    const lastTick = chunk[chunk.length - 1];
+    const prices = chunk.map((item) => item.price);
+    const totalVolume = chunk.reduce((sum, item) => sum + item.volume, 0);
+
+    candles.push({
+      key: `${symbolKey}-${i}-${lastTick.timestamp}`,
+      time: new Date(lastTick.timestamp).toLocaleTimeString('ru-RU'),
+      timestamp: lastTick.timestamp,
+      open: firstTick.price,
+      high: Math.max(...prices),
+      low: Math.min(...prices),
+      close: lastTick.price,
+      volume: totalVolume,
+      rising: lastTick.price >= firstTick.price
+    });
+  }
+
+  return {
+    symbol: chartSymbol,
+    max: Math.max(...candles.map((item) => item.high)),
+    min: Math.min(...candles.map((item) => item.low)),
+    candles
+  };
+}
+
 export function StreamPage() {
-  const { connection, reconnectCount } = useMarketHubContext();
+  const { connection, connectionState, reconnectCount } = useMarketHubContext();
   const bufferRef = useRef(new RingBuffer<StreamTickRow>(MAX_TICKS));
   const rowIdRef = useRef(0);
   const [ticks, setTicks] = useState<StreamTickRow[]>([]);
@@ -23,16 +122,55 @@ export function StreamPage() {
   const [symbolFilter, setSymbolFilter] = useState<string>();
   const [messagesPerSecond, setMessagesPerSecond] = useState(0);
   const [delays, setDelays] = useState<number[]>([]);
+  const [performanceHistory, setPerformanceHistory] = useState<PerformancePoint[]>([]);
 
   useEffect(() => {
-    if (!connection) {
+    if (!connection || connectionState !== 'Подключено') {
+      return;
+    }
+
+    const subscribeStream = async () => {
+      try {
+        await connection.invoke('SubscribeStream');
+      } catch (error) {
+        console.warn('Не удалось подписаться на поток', error);
+      }
+    };
+
+    void subscribeStream();
+
+    return () => {
+      void connection.invoke('UnsubscribeStream');
+    };
+  }, [connection, connectionState]);
+
+  useEffect(() => {
+    if (!connection || connectionState !== 'Подключено') {
       return;
     }
 
     let counter = 0;
+    let secondDelays: number[] = [];
+
     const timer = setInterval(() => {
       setMessagesPerSecond(counter);
+
+      const nowIso = new Date().toISOString();
+      const delayP95Ms = percentile(secondDelays, 95);
+      setPerformanceHistory((prev) =>
+        [
+          ...prev,
+          {
+            key: nowIso,
+            timeLabel: new Date(nowIso).toLocaleTimeString('ru-RU'),
+            messagesPerSecond: counter,
+            delayP95Ms
+          }
+        ].slice(-MAX_PERFORMANCE_POINTS)
+      );
+
       counter = 0;
+      secondDelays = [];
     }, 1000);
 
     const tickHandler = (payload: unknown) => {
@@ -44,7 +182,8 @@ export function StreamPage() {
       const tick = parsed.data;
       counter += 1;
 
-      const delayMs = Math.max(0, new Date(tick.receivedAt).getTime() - new Date(tick.timestamp).getTime());
+      const delayMs = calculateClientDelayMs(tick.timestamp, Date.now());
+      secondDelays.push(delayMs);
       setDelays((prev) => [...prev.slice(-499), delayMs]);
 
       if (!paused) {
@@ -52,6 +191,7 @@ export function StreamPage() {
         if (!tick.id) {
           rowIdRef.current += 1;
         }
+
         bufferRef.current.push({ ...tick, rowId });
         setTicks(bufferRef.current.toArray());
       }
@@ -63,10 +203,10 @@ export function StreamPage() {
       clearInterval(timer);
       connection.off('tick', tickHandler);
     };
-  }, [connection, paused]);
+  }, [connection, connectionState, paused]);
 
   useEffect(() => {
-    if (!connection) {
+    if (!connection || connectionState !== 'Подключено') {
       return;
     }
 
@@ -92,7 +232,7 @@ export function StreamPage() {
         void connection.invoke('UnsubscribeSymbols', [symbolFilter]);
       }
     };
-  }, [connection, exchangeFilter, symbolFilter]);
+  }, [connection, connectionState, exchangeFilter, symbolFilter]);
 
   const filteredTicks = useMemo(
     () =>
@@ -110,11 +250,82 @@ export function StreamPage() {
     [ticks, exchangeFilter, symbolFilter]
   );
 
-  const chartData = filteredTicks.slice(-50).map((item) => ({
-    time: new Date(item.timestamp).toLocaleTimeString('ru-RU'),
-    price: item.price,
-    volume: item.volume
-  }));
+  const performanceChart = useMemo(() => {
+    if (!performanceHistory.length) {
+      return {
+        hasData: false,
+        width: 420,
+        height: 220,
+        minX: 0,
+        maxX: 0,
+        maxY: 0,
+        messagesPath: '',
+        delayPath: '',
+        labels: [] as PerformancePoint[],
+        yTicks: [] as PerformanceYAxisTick[],
+        messagesMin: 0,
+        messagesMax: 0,
+        delayMin: 0,
+        delayMax: 0
+      };
+    }
+
+    const width = Math.max(420, performanceHistory.length * 28);
+    const height = 220;
+    const minX = 46;
+    const maxX = width - 46;
+    const minY = 12;
+    const maxY = height - 26;
+    const plotWidth = Math.max(maxX - minX, 1);
+    const plotHeight = Math.max(maxY - minY, 1);
+    const messageValues = performanceHistory.map((item) => item.messagesPerSecond);
+    const delayValues = performanceHistory.map((item) => item.delayP95Ms);
+    const messagesMin = Math.min(...messageValues);
+    const messagesMax = Math.max(...messageValues);
+    const delayMin = Math.min(...delayValues);
+    const delayMax = Math.max(...delayValues);
+    const messagesSpan = Math.max(messagesMax - messagesMin, Number.EPSILON);
+    const delaySpan = Math.max(delayMax - delayMin, Number.EPSILON);
+    const yTicks: PerformanceYAxisTick[] = Array.from({ length: PERFORMANCE_Y_TICKS }, (_, index) => {
+      const ratio = index / Math.max(PERFORMANCE_Y_TICKS - 1, 1);
+      const y = minY + ratio * plotHeight;
+      const messagesValue = messagesMax - ratio * (messagesMax - messagesMin);
+      const delayValue = delayMax - ratio * (delayMax - delayMin);
+
+      return {
+        key: `y-tick-${index}`,
+        y,
+        messagesValue,
+        delayValue
+      };
+    });
+
+    const buildPath = (values: number[], min: number, span: number): string =>
+      values
+        .map((value, index) => {
+          const x = minX + (plotWidth * index) / Math.max(values.length - 1, 1);
+          const y = minY + ((min + span - value) / span) * plotHeight;
+          return `${index === 0 ? 'M' : 'L'} ${x.toFixed(2)} ${y.toFixed(2)}`;
+        })
+        .join(' ');
+
+    return {
+      hasData: true,
+      width,
+      height,
+      minX,
+      maxX,
+      maxY,
+      messagesPath: buildPath(messageValues, messagesMin, messagesSpan),
+      delayPath: buildPath(delayValues, delayMin, delaySpan),
+      labels: performanceHistory,
+      yTicks,
+      messagesMin,
+      messagesMax,
+      delayMin,
+      delayMax
+    };
+  }, [performanceHistory]);
 
   const exchanges = Array.from(new Set(ticks.map((item) => item.exchange)));
   const symbols = Array.from(new Set(ticks.map((item) => item.symbol)));
@@ -175,6 +386,7 @@ export function StreamPage() {
               bufferRef.current.clear();
               setTicks([]);
               setDelays([]);
+              setPerformanceHistory([]);
             }}
           >
             Очистить
@@ -201,21 +413,96 @@ export function StreamPage() {
         />
       </Card>
 
-      <Card title="Мини-график цены и объёма">
-        <div style={{ width: '100%', height: 280 }}>
-          <ResponsiveContainer>
-            <LineChart data={chartData}>
-              <XAxis dataKey="time" />
-              <YAxis yAxisId="price" orientation="left" />
-              <YAxis yAxisId="volume" orientation="right" />
-              <Tooltip />
-              <Line yAxisId="price" dataKey="price" stroke="#1890ff" dot={false} name="Цена" />
-              <Line yAxisId="volume" dataKey="volume" stroke="#52c41a" dot={false} name="Объём" />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
+      <Card title="График потока (messages/s и задержка p95)">
+        {performanceChart.hasData ? (
+          <div style={{ border: '1px solid #f0f0f0', borderRadius: 8, padding: 12 }}>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                marginBottom: 8,
+                fontSize: 12,
+                color: '#595959'
+              }}
+            >
+              <span>
+                Messages/s min-max: {formatNumber(performanceChart.messagesMin, 0)} - {formatNumber(performanceChart.messagesMax, 0)}
+              </span>
+              <span>
+                Delay p95 min-max, мс: {formatNumber(performanceChart.delayMin, 0)} - {formatNumber(performanceChart.delayMax, 0)}
+              </span>
+            </div>
+            <div style={{ minWidth: 420, overflowX: 'auto' }}>
+              <svg width={performanceChart.width} height={performanceChart.height} role="img" aria-label="График потока">
+                <line x1={performanceChart.minX} y1={12} x2={performanceChart.minX} y2={performanceChart.maxY} stroke="#d9d9d9" strokeWidth={1} />
+                <line x1={performanceChart.maxX} y1={12} x2={performanceChart.maxX} y2={performanceChart.maxY} stroke="#d9d9d9" strokeWidth={1} />
+                <line
+                  x1={performanceChart.minX}
+                  y1={performanceChart.maxY}
+                  x2={performanceChart.maxX}
+                  y2={performanceChart.maxY}
+                  stroke="#d9d9d9"
+                  strokeWidth={1}
+                />
+                {performanceChart.yTicks.map((tick) => (
+                  <g key={tick.key}>
+                    <line
+                      x1={performanceChart.minX}
+                      y1={tick.y}
+                      x2={performanceChart.maxX}
+                      y2={tick.y}
+                      stroke="#f0f0f0"
+                      strokeWidth={1}
+                    />
+                    <line x1={performanceChart.minX - 5} y1={tick.y} x2={performanceChart.minX} y2={tick.y} stroke="#bfbfbf" strokeWidth={1} />
+                    <line x1={performanceChart.maxX} y1={tick.y} x2={performanceChart.maxX + 5} y2={tick.y} stroke="#bfbfbf" strokeWidth={1} />
+                    <text
+                      x={performanceChart.minX - 8}
+                      y={tick.y + 3}
+                      textAnchor="end"
+                      fontSize={10}
+                      fill="#8c8c8c"
+                    >
+                      {formatNumber(tick.messagesValue, 0)}
+                    </text>
+                    <text
+                      x={performanceChart.maxX + 8}
+                      y={tick.y + 3}
+                      textAnchor="start"
+                      fontSize={10}
+                      fill="#8c8c8c"
+                    >
+                      {formatNumber(tick.delayValue, 0)}
+                    </text>
+                  </g>
+                ))}
+                <path d={performanceChart.messagesPath} fill="none" stroke="#1677ff" strokeWidth={2} />
+                <path d={performanceChart.delayPath} fill="none" stroke="#fa8c16" strokeWidth={2} />
+                {performanceChart.labels.map((item, index) => {
+                  if (index % 10 !== 0 && index !== performanceChart.labels.length - 1) {
+                    return null;
+                  }
+
+                  const x =
+                    performanceChart.minX +
+                    ((performanceChart.maxX - performanceChart.minX) * index) / Math.max(performanceChart.labels.length - 1, 1);
+                  return (
+                    <text key={item.key} x={x} y={performanceChart.height - 4} textAnchor="middle" fontSize={10} fill="#8c8c8c">
+                      {item.timeLabel}
+                    </text>
+                  );
+                })}
+              </svg>
+            </div>
+            <Space style={{ marginTop: 8 }}>
+              <Typography.Text style={{ color: '#1677ff' }}>Messages/s</Typography.Text>
+              <Typography.Text style={{ color: '#fa8c16' }}>Задержка p95, мс</Typography.Text>
+            </Space>
+          </div>
+        ) : (
+          <Typography.Text type="secondary">Недостаточно данных для построения графика потока.</Typography.Text>
+        )}
       </Card>
     </Space>
   );
 }
-

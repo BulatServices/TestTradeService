@@ -44,6 +44,10 @@ public sealed class AlertRuleConfigProvider : IMutableAlertRuleConfigProvider
             .Where(c => c.Exchange is null || string.Equals(c.Exchange, exchange, StringComparison.OrdinalIgnoreCase))
             .Where(c => c.Symbol is null || string.Equals(c.Symbol, symbol, StringComparison.OrdinalIgnoreCase))
             .OrderByDescending(c => Score(c.Exchange, c.Symbol))
+            .ThenBy(c => NormalizeScopePart(c.RuleName), StringComparer.Ordinal)
+            .ThenBy(c => NormalizeScopePart(c.Exchange), StringComparer.Ordinal)
+            .ThenBy(c => NormalizeScopePart(c.Symbol), StringComparer.Ordinal)
+            .ThenBy(c => BuildParametersFingerprint(c.Parameters), StringComparer.Ordinal)
             .FirstOrDefault();
 
         return best?.Parameters ?? Empty();
@@ -94,6 +98,21 @@ public sealed class AlertRuleConfigProvider : IMutableAlertRuleConfigProvider
             return source;
 
         return source[..separatorIndex];
+    }
+
+    private static string NormalizeScopePart(string? value)
+    {
+        return value?.Trim().ToUpperInvariant() ?? string.Empty;
+    }
+
+    private static string BuildParametersFingerprint(IReadOnlyDictionary<string, string> parameters)
+    {
+        return string.Join(
+            ";",
+            parameters
+                .OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(pair => pair.Value, StringComparer.Ordinal)
+                .Select(pair => $"{pair.Key}={pair.Value}"));
     }
 
     private static IReadOnlyDictionary<string, string> Empty() => new Dictionary<string, string>(0, StringComparer.OrdinalIgnoreCase);

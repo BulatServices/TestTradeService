@@ -1,37 +1,54 @@
-namespace TestTradeService.Storage.Configuration;
+п»їnamespace TestTradeService.Storage.Configuration;
 
 /// <summary>
-/// Настройки подключений к контурам хранения данных.
+/// РќР°СЃС‚СЂРѕР№РєРё РїРѕРґРєР»СЋС‡РµРЅРёР№ Рє РєРѕРЅС‚СѓСЂР°Рј С…СЂР°РЅРµРЅРёСЏ РґР°РЅРЅС‹С….
 /// </summary>
 public sealed class DatabaseOptions
 {
     /// <summary>
-    /// Имя секции конфигурации для настроек БД.
+    /// РРјСЏ СЃРµРєС†РёРё РєРѕРЅС„РёРіСѓСЂР°С†РёРё РґР»СЏ РЅР°СЃС‚СЂРѕРµРє Р‘Р”.
     /// </summary>
     public const string SectionName = "Database";
 
     /// <summary>
-    /// Строка подключения к PostgreSQL для метаданных.
+    /// РЎС‚СЂРѕРєР° РїРѕРґРєР»СЋС‡РµРЅРёСЏ Рє PostgreSQL РґР»СЏ РјРµС‚Р°РґР°РЅРЅС‹С….
     /// </summary>
     public string MetadataConnectionString { get; init; } = string.Empty;
 
     /// <summary>
-    /// Строка подключения к TimescaleDB для таймсерий.
+    /// РЎС‚СЂРѕРєР° РїРѕРґРєР»СЋС‡РµРЅРёСЏ Рє TimescaleDB РґР»СЏ С‚Р°Р№РјСЃРµСЂРёР№.
     /// </summary>
     public string TimeseriesConnectionString { get; init; } = string.Empty;
 
     /// <summary>
-    /// Признак автоматического применения миграций при старте сервиса.
+    /// РџСЂРёР·РЅР°Рє Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРѕРіРѕ РїСЂРёРјРµРЅРµРЅРёСЏ РјРёРіСЂР°С†РёР№ РїСЂРё СЃС‚Р°СЂС‚Рµ СЃРµСЂРІРёСЃР°.
     /// </summary>
     public bool AutoMigrate { get; init; } = true;
 
     /// <summary>
-    /// Проверяет, что обе строки подключения заданы.
+    /// РџСЂРѕРІРµСЂСЏРµС‚, С‡С‚Рѕ СЃС‚СЂРѕРєР° РїРѕРґРєР»СЋС‡РµРЅРёСЏ Рє Р‘Р” РјРµС‚Р°РґР°РЅРЅС‹С… Р·Р°РґР°РЅР°.
     /// </summary>
-    /// <returns><c>true</c>, если конфигурация позволяет включить БД-контур.</returns>
+    /// <returns><c>true</c>, РµСЃР»Рё РґРѕСЃС‚СѓРїРµРЅ РєРѕРЅС‚СѓСЂ РјРµС‚Р°РґР°РЅРЅС‹С….</returns>
+    public bool HasMetadataConnection()
+    {
+        return !string.IsNullOrWhiteSpace(MetadataConnectionString);
+    }
+
+    /// <summary>
+    /// РџСЂРѕРІРµСЂСЏРµС‚, С‡С‚Рѕ СЃС‚СЂРѕРєР° РїРѕРґРєР»СЋС‡РµРЅРёСЏ Рє С‚Р°Р№РјСЃРµСЂРёР№РЅРѕР№ Р‘Р” Р·Р°РґР°РЅР°.
+    /// </summary>
+    /// <returns><c>true</c>, РµСЃР»Рё РґРѕСЃС‚СѓРїРµРЅ С‚Р°Р№РјСЃРµСЂРёР№РЅС‹Р№ РєРѕРЅС‚СѓСЂ.</returns>
+    public bool HasTimeseriesConnection()
+    {
+        return !string.IsNullOrWhiteSpace(TimeseriesConnectionString);
+    }
+
+    /// <summary>
+    /// РџСЂРѕРІРµСЂСЏРµС‚, С‡С‚Рѕ РѕР±Рµ СЃС‚СЂРѕРєРё РїРѕРґРєР»СЋС‡РµРЅРёСЏ Р·Р°РґР°РЅС‹.
+    /// </summary>
+    /// <returns><c>true</c>, РµСЃР»Рё РєРѕРЅС„РёРіСѓСЂР°С†РёСЏ РїРѕР·РІРѕР»СЏРµС‚ РІРєР»СЋС‡РёС‚СЊ Р‘Р”-РєРѕРЅС‚СѓСЂ.</returns>
     public bool HasBothConnections()
     {
-        return !string.IsNullOrWhiteSpace(MetadataConnectionString)
-            && !string.IsNullOrWhiteSpace(TimeseriesConnectionString);
+        return HasMetadataConnection() && HasTimeseriesConnection();
     }
 }

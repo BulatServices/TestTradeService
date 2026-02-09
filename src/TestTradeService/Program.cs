@@ -22,36 +22,51 @@ builder.Configuration
     .AddEnvironmentVariables();
 
 var databaseOptions = builder.Configuration.GetSection(DatabaseOptions.SectionName).Get<DatabaseOptions>() ?? new DatabaseOptions();
-var databaseEnabled = databaseOptions.HasBothConnections();
+var metadataEnabled = databaseOptions.HasMetadataConnection();
+var fullDatabaseEnabled = databaseOptions.HasBothConnections();
 
 var instrumentsConfig = DefaultConfigurationFactory.CreateInstruments();
 var alertRuleConfigs = DefaultConfigurationFactory.CreateAlertRules();
 MetadataDataSource? metadataDataSource = null;
 TimeseriesDataSource? timeseriesDataSource = null;
 
-if (databaseEnabled)
+if (metadataEnabled)
 {
     metadataDataSource = new MetadataDataSource(NpgsqlDataSource.Create(databaseOptions.MetadataConnectionString));
+}
+
+if (fullDatabaseEnabled)
+{
     timeseriesDataSource = new TimeseriesDataSource(NpgsqlDataSource.Create(databaseOptions.TimeseriesConnectionString));
 
     if (databaseOptions.AutoMigrate)
     {
-        var runner = new SqlMigrationRunner(metadataDataSource, timeseriesDataSource);
+        var runner = new SqlMigrationRunner(metadataDataSource!, timeseriesDataSource);
         await runner.RunAsync(CancellationToken.None);
     }
+}
 
-    var repository = new PostgresConfigurationRepository(metadataDataSource);
-    var loadedInstruments = await repository.GetMarketInstrumentsConfigAsync(CancellationToken.None);
-    var loadedRules = await repository.GetAlertRulesAsync(CancellationToken.None);
-
-    if (loadedInstruments.Profiles.Count > 0)
+if (metadataEnabled)
+{
+    try
     {
-        instrumentsConfig = loadedInstruments;
+        var repository = new PostgresConfigurationRepository(metadataDataSource!);
+        var loadedInstruments = await repository.GetMarketInstrumentsConfigAsync(CancellationToken.None);
+        var loadedRules = await repository.GetAlertRulesAsync(CancellationToken.None);
+
+        if (loadedInstruments.Profiles.Count > 0)
+        {
+            instrumentsConfig = loadedInstruments;
+        }
+
+        if (loadedRules.Count > 0)
+        {
+            alertRuleConfigs = loadedRules;
+        }
     }
-
-    if (loadedRules.Count > 0)
+    catch (Exception ex)
     {
-        alertRuleConfigs = loadedRules;
+        Console.WriteLine($"Failed to load configuration from metadata database: {ex.Message}");
     }
 }
 
@@ -77,10 +92,16 @@ builder.Services.AddSingleton(new MonitoringSlaConfig
 {
     MaxTickDelay = TimeSpan.FromSeconds(2)
 });
+var pipelinePerformanceOptions = builder.Configuration.GetSection("PipelinePerformance").Get<PipelinePerformanceOptions>() ?? new PipelinePerformanceOptions();
+builder.Services.AddSingleton(pipelinePerformanceOptions);
 
-if (databaseEnabled && metadataDataSource is not null && timeseriesDataSource is not null)
+if (metadataEnabled && metadataDataSource is not null)
 {
-    builder.Services.AddSingleton(metadataDataSource);
+    builder.Services.AddSingleton(metadataDataSource!);
+}
+
+if (fullDatabaseEnabled && metadataDataSource is not null && timeseriesDataSource is not null)
+{
     builder.Services.AddSingleton(timeseriesDataSource);
     builder.Services.AddSingleton<SqlMigrationRunner>();
     builder.Services.AddSingleton<IConfigurationRepository, PostgresConfigurationRepository>();
@@ -88,13 +109,20 @@ if (databaseEnabled && metadataDataSource is not null && timeseriesDataSource is
     builder.Services.AddHostedService<MigrationHostedService>();
 
     builder.Services.AddSingleton<IProcessedReadRepository, ProcessedReadRepository>();
-    builder.Services.AddSingleton<IAlertReadRepository, AlertReadRepository>();
-    builder.Services.AddSingleton<IAlertRuleWriteRepository, AlertRuleWriteRepository>();
 }
 else
 {
     builder.Services.AddSingleton<IStorage, InMemoryStorage>();
     builder.Services.AddSingleton<IProcessedReadRepository, InMemoryProcessedReadRepository>();
+}
+
+if (metadataEnabled && metadataDataSource is not null)
+{
+    builder.Services.AddSingleton<IAlertReadRepository, AlertReadRepository>();
+    builder.Services.AddSingleton<IAlertRuleWriteRepository, AlertRuleWriteRepository>();
+}
+else
+{
     builder.Services.AddSingleton<InMemoryAlertRepository>();
     builder.Services.AddSingleton<IAlertReadRepository>(sp => sp.GetRequiredService<InMemoryAlertRepository>());
     builder.Services.AddSingleton<IAlertRuleWriteRepository>(sp => sp.GetRequiredService<InMemoryAlertRepository>());

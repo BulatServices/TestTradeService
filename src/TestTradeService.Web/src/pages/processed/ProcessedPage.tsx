@@ -2,9 +2,176 @@
 import { Card, DatePicker, Select, Space, Table, Tabs, Typography } from 'antd';
 import { useQuery } from '@tanstack/react-query';
 import { getCandles, getMetrics } from '../../features/processed/api/processedApi';
+import { CandleDto } from '../../entities/processed/model/types';
 import { formatDateTime, formatNumber } from '../../shared/lib/format';
 
 const { RangePicker } = DatePicker;
+const blockedExchangeValues = new Set(['demo']);
+const MAX_CHART_CANDLES = 120;
+
+type ProcessedChartCandle = {
+  key: string;
+  timeLabel: string;
+  timestamp: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  rising: boolean;
+};
+
+function buildProcessedCandles(candles: CandleDto[], symbol?: string): {
+  symbol?: string;
+  candles: ProcessedChartCandle[];
+  min: number;
+  max: number;
+} {
+  if (!symbol) {
+    return { symbol: undefined, candles: [], min: 0, max: 0 };
+  }
+
+  const normalized = symbol.trim().toUpperCase();
+  const filtered = candles
+    .filter((item) => item.symbol.trim().toUpperCase() === normalized)
+    .sort((a, b) => new Date(a.windowStart).getTime() - new Date(b.windowStart).getTime())
+    .slice(-MAX_CHART_CANDLES);
+
+  if (!filtered.length) {
+    return { symbol, candles: [], min: 0, max: 0 };
+  }
+
+  const series = filtered.map((item, index) => ({
+    key: `${item.exchange}-${item.symbol}-${item.windowStart}-${index}`,
+    timeLabel: new Date(item.windowStart).toLocaleTimeString('ru-RU'),
+    timestamp: item.windowStart,
+    open: item.open,
+    high: item.high,
+    low: item.low,
+    close: item.close,
+    volume: item.volume,
+    rising: item.close >= item.open
+  }));
+
+  return {
+    symbol,
+    candles: series,
+    min: Math.min(...series.map((item) => item.low)),
+    max: Math.max(...series.map((item) => item.high))
+  };
+}
+
+function ProcessedCandlestickChart({
+  symbol,
+  candles,
+  min,
+  max
+}: {
+  symbol: string;
+  candles: ProcessedChartCandle[];
+  min: number;
+  max: number;
+}) {
+  const width = Math.max(720, candles.length * 18);
+  const height = 360;
+  const padding = { top: 20, right: 78, bottom: 32, left: 16 };
+  const volumeAreaHeight = 86;
+  const priceAreaHeight = height - padding.top - padding.bottom - volumeAreaHeight;
+  const priceTop = padding.top;
+  const volumeTop = priceTop + priceAreaHeight;
+  const chartWidth = width - padding.left - padding.right;
+  const slot = chartWidth / Math.max(candles.length, 1);
+  const bodyWidth = Math.min(14, Math.max(4, slot * 0.62));
+  const span = Math.max(max - min, Number.EPSILON);
+  const paddedMin = min - span * 0.06;
+  const paddedMax = max + span * 0.06;
+  const paddedSpan = Math.max(paddedMax - paddedMin, Number.EPSILON);
+  const maxVolume = Math.max(...candles.map((item) => item.volume), Number.EPSILON);
+
+  const yForPrice = (price: number) => priceTop + ((paddedMax - price) / paddedSpan) * priceAreaHeight;
+  const yForVolume = (volume: number) => volumeTop + volumeAreaHeight - (volume / maxVolume) * (volumeAreaHeight - 6);
+
+  const priceLevels = Array.from({ length: 5 }, (_, index) => {
+    const value = paddedMax - ((paddedMax - paddedMin) * index) / 4;
+    return {
+      value,
+      y: yForPrice(value)
+    };
+  });
+
+  const timeLabels = candles.length <= 1
+    ? []
+    : Array.from({ length: Math.min(6, candles.length) }, (_, index) => {
+      const candleIndex = Math.round((index * (candles.length - 1)) / Math.max(Math.min(6, candles.length) - 1, 1));
+      const candle = candles[candleIndex];
+      const x = padding.left + candleIndex * slot + slot / 2;
+      return { key: candle.key, x, label: candle.timeLabel };
+    });
+
+  return (
+    <div style={{ border: '1px solid #f0f0f0', borderRadius: 8, padding: 12 }}>
+      <div style={{ marginBottom: 8, fontSize: 12, color: '#595959' }}>
+        {symbol}: O/H/L/C последней свечи {formatNumber(candles[candles.length - 1].open, 4)} / {formatNumber(candles[candles.length - 1].high, 4)} / {formatNumber(candles[candles.length - 1].low, 4)} / {formatNumber(candles[candles.length - 1].close, 4)}
+      </div>
+      <div style={{ overflowX: 'auto' }}>
+        <svg width={width} height={height} role="img" aria-label="Свечной график processed">
+          <rect x={padding.left} y={priceTop} width={chartWidth} height={priceAreaHeight} fill="#ffffff" rx={8} />
+          <rect x={padding.left} y={volumeTop} width={chartWidth} height={volumeAreaHeight} fill="#f7f9fc" rx={8} />
+
+          {priceLevels.map((level) => (
+            <g key={String(level.value)}>
+              <line
+                x1={padding.left}
+                x2={padding.left + chartWidth}
+                y1={level.y}
+                y2={level.y}
+                stroke="#ebedf3"
+                strokeDasharray="4 4"
+              />
+              <text x={padding.left + chartWidth + 10} y={level.y + 4} fill="#6d7385" fontSize="11">
+                {formatNumber(level.value, 4)}
+              </text>
+            </g>
+          ))}
+
+          {candles.map((candle, index) => {
+            const color = candle.rising ? '#1ea672' : '#e24f4f';
+            const centerX = padding.left + index * slot + slot / 2;
+            const wickTop = yForPrice(candle.high);
+            const wickBottom = yForPrice(candle.low);
+            const openY = yForPrice(candle.open);
+            const closeY = yForPrice(candle.close);
+            const bodyTop = Math.min(openY, closeY);
+            const bodyHeight = Math.max(Math.abs(openY - closeY), 1.4);
+            const volumeY = yForVolume(candle.volume);
+
+            return (
+              <g key={candle.key}>
+                <line x1={centerX} x2={centerX} y1={wickTop} y2={wickBottom} stroke={color} strokeWidth={1.5} />
+                <rect x={centerX - bodyWidth / 2} y={bodyTop} width={bodyWidth} height={bodyHeight} fill={color} rx={2} />
+                <rect
+                  x={centerX - bodyWidth / 2}
+                  y={volumeY}
+                  width={bodyWidth}
+                  height={Math.max(volumeTop + volumeAreaHeight - volumeY, 1)}
+                  fill={color}
+                  opacity={0.35}
+                  rx={2}
+                />
+              </g>
+            );
+          })}
+
+          {timeLabels.map((item) => (
+            <text key={item.key} x={item.x} y={height - 8} textAnchor="middle" fontSize="10" fill="#8c8c8c">
+              {item.label}
+            </text>
+          ))}
+        </svg>
+      </div>
+    </div>
+  );
+}
 
 export function ProcessedPage() {
   const [exchange, setExchange] = useState<string>();
@@ -12,9 +179,10 @@ export function ProcessedPage() {
   const [windowValue, setWindowValue] = useState('1m');
   const [period, setPeriod] = useState<[string, string] | undefined>();
   const [page, setPage] = useState(1);
+  const safeExchange = exchange && blockedExchangeValues.has(exchange.toLowerCase()) ? undefined : exchange;
 
   const commonParams = {
-    exchange,
+    exchange: safeExchange,
     symbol,
     window: windowValue,
     dateFrom: period?.[0],
@@ -31,59 +199,7 @@ export function ProcessedPage() {
     queryFn: () => getMetrics(commonParams)
   });
 
-  const candleChart = useMemo(() => {
-    const items = candlesQuery.data?.items ?? [];
-    if (!items.length) {
-      return {
-        max: 0,
-        min: 0,
-        candles: [] as Array<{
-          key: string;
-          time: string;
-          highTop: number;
-          wickHeight: number;
-          bodyTop: number;
-          bodyHeight: number;
-          rising: boolean;
-          open: number;
-          high: number;
-          low: number;
-          close: number;
-        }>
-      };
-    }
-
-    const max = Math.max(...items.map((item) => item.high));
-    const min = Math.min(...items.map((item) => item.low));
-    const span = Math.max(max - min, Number.EPSILON);
-
-    const toPercentFromTop = (price: number) => ((max - price) / span) * 100;
-
-    return {
-      max,
-      min,
-      candles: items.map((item) => {
-        const highTop = toPercentFromTop(item.high);
-        const lowTop = toPercentFromTop(item.low);
-        const openTop = toPercentFromTop(item.open);
-        const closeTop = toPercentFromTop(item.close);
-
-        return {
-          key: `${item.symbol}-${item.windowStart}`,
-          time: new Date(item.windowStart).toLocaleTimeString('ru-RU'),
-          highTop,
-          wickHeight: Math.max(lowTop - highTop, 1),
-          bodyTop: Math.min(openTop, closeTop),
-          bodyHeight: Math.max(Math.abs(openTop - closeTop), 1),
-          rising: item.close >= item.open,
-          open: item.open,
-          high: item.high,
-          low: item.low,
-          close: item.close
-        };
-      })
-    };
-  }, [candlesQuery.data]);
+  const candleChart = useMemo(() => buildProcessedCandles(candlesQuery.data?.items ?? [], symbol), [candlesQuery.data, symbol]);
 
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
@@ -95,8 +211,15 @@ export function ProcessedPage() {
             placeholder="Биржа"
             allowClear
             style={{ width: 180 }}
-            value={exchange}
-            onChange={setExchange}
+            value={safeExchange}
+            onChange={(value) => {
+              if (value && blockedExchangeValues.has(value.toLowerCase())) {
+                setExchange(undefined);
+                return;
+              }
+
+              setExchange(value);
+            }}
             options={['Kraken', 'Coinbase', 'Bybit'].map((value) => ({ value }))}
           />
           <Select
@@ -171,70 +294,19 @@ export function ProcessedPage() {
                     { title: 'Количество тиков', dataIndex: 'count' }
                   ]}
                 />
+
                 <div style={{ width: '100%', marginTop: 16 }}>
-                  {candleChart.candles.length ? (
-                    <div style={{ border: '1px solid #f0f0f0', borderRadius: 8, padding: 12 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, fontSize: 12, color: '#595959' }}>
-                        <span>max: {formatNumber(candleChart.max, 4)}</span>
-                        <span>min: {formatNumber(candleChart.min, 4)}</span>
-                      </div>
-                      <div
-                        style={{
-                          display: 'flex',
-                          gap: 6,
-                          height: 220,
-                          minWidth: 420,
-                          overflowX: 'auto',
-                          alignItems: 'stretch'
-                        }}
-                      >
-                        {candleChart.candles.map((item) => {
-                          const color = item.rising ? '#52c41a' : '#ff4d4f';
-                          return (
-                            <div key={item.key} style={{ flex: 1, minWidth: 16, position: 'relative' }} title={`O: ${formatNumber(item.open, 4)} H: ${formatNumber(item.high, 4)} L: ${formatNumber(item.low, 4)} C: ${formatNumber(item.close, 4)}`}>
-                              <div
-                                style={{
-                                  position: 'absolute',
-                                  left: '50%',
-                                  marginLeft: -1,
-                                  width: 2,
-                                  top: `${item.highTop}%`,
-                                  height: `${item.wickHeight}%`,
-                                  backgroundColor: color
-                                }}
-                              />
-                              <div
-                                style={{
-                                  position: 'absolute',
-                                  left: '50%',
-                                  marginLeft: -5,
-                                  width: 10,
-                                  top: `${item.bodyTop}%`,
-                                  height: `${item.bodyHeight}%`,
-                                  backgroundColor: color,
-                                  borderRadius: 2
-                                }}
-                              />
-                              <div
-                                style={{
-                                  position: 'absolute',
-                                  bottom: -20,
-                                  left: '50%',
-                                  transform: 'translateX(-50%)',
-                                  fontSize: 11,
-                                  color: '#8c8c8c',
-                                  whiteSpace: 'nowrap'
-                                }}
-                              >
-                                {item.time}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
+                  {!symbol ? (
+                    <Typography.Text type="secondary">Выберите тикер в фильтре выше, чтобы построить свечной график.</Typography.Text>
+                  ) : candleChart.candles.length ? (
+                    <ProcessedCandlestickChart
+                      symbol={symbol}
+                      candles={candleChart.candles}
+                      min={candleChart.min}
+                      max={candleChart.max}
+                    />
                   ) : (
-                    <Typography.Text type="secondary">Недостаточно данных для построения свечного графика.</Typography.Text>
+                    <Typography.Text type="secondary">Недостаточно данных для свечного графика по выбранному тикеру.</Typography.Text>
                   )}
                 </div>
               </Card>
@@ -279,4 +351,3 @@ export function ProcessedPage() {
     </Space>
   );
 }
-

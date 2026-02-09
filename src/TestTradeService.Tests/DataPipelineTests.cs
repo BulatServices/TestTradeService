@@ -1,5 +1,6 @@
 using System.Threading.Channels;
 using System.Runtime.CompilerServices;
+using System.Diagnostics;
 using Microsoft.Extensions.Logging.Abstractions;
 using TestTradeService.Ingestion.Configuration;
 using TestTradeService.Interfaces;
@@ -201,6 +202,155 @@ public sealed class DataPipelineTests
         Assert.Single(storage.StoredTicks);
     }
 
+    /// <summary>
+    /// Проверяет, что порядок обработки сохраняется для каждого символа при нескольких партициях.
+    /// </summary>
+    [Fact]
+    public async Task StartAsync_WithMultiplePartitions_PreservesPerSymbolOrder()
+    {
+        var aggregation = new CapturingAggregationService();
+        var storage = new CapturingStorage();
+        var monitoring = new CapturingMonitoringService();
+        var eventBus = new CapturingMarketDataEventBus();
+        var config = new MarketInstrumentsConfig
+        {
+            Profiles = new[]
+            {
+                new MarketInstrumentProfile
+                {
+                    Exchange = MarketExchange.Bybit,
+                    MarketType = MarketType.Spot,
+                    Transport = MarketDataSourceTransport.WebSocket,
+                    Symbols = new[] { "BTCUSDT", "ETHUSDT" }
+                }
+            }
+        };
+
+        var pipeline = new DataPipeline(
+            aggregation,
+            storage,
+            new NoOpAlertingService(),
+            monitoring,
+            eventBus,
+            config,
+            NullLogger<DataPipeline>.Instance,
+            new PipelinePerformanceOptions
+            {
+                PartitionCount = 4,
+                BatchSize = 32,
+                FlushInterval = TimeSpan.FromMilliseconds(50),
+                MaxInMemoryBatches = 8,
+                AlertingConcurrency = 4
+            });
+
+        var channel = Channel.CreateUnbounded<Tick>();
+        var baseTime = DateTimeOffset.UtcNow;
+        for (var i = 0; i < 100; i++)
+        {
+            await channel.Writer.WriteAsync(new Tick
+            {
+                Source = "Bybit-WebSocket",
+                Symbol = "BTCUSDT",
+                Price = 10_000m + i,
+                Volume = 1m,
+                Timestamp = baseTime.AddMilliseconds(i),
+                TradeId = $"btc-{i}"
+            });
+            await channel.Writer.WriteAsync(new Tick
+            {
+                Source = "Bybit-WebSocket",
+                Symbol = "ETHUSDT",
+                Price = 2_000m + i,
+                Volume = 1m,
+                Timestamp = baseTime.AddMilliseconds(i),
+                TradeId = $"eth-{i}"
+            });
+        }
+
+        channel.Writer.Complete();
+        await pipeline.StartAsync(channel.Reader, CancellationToken.None);
+
+        var btcPrices = storage.StoredTicks.Where(t => t.Symbol == "BTCUSDT").Select(t => t.Price).ToArray();
+        var ethPrices = storage.StoredTicks.Where(t => t.Symbol == "ETHUSDT").Select(t => t.Price).ToArray();
+        Assert.Equal(Enumerable.Range(0, 100).Select(i => 10_000m + i), btcPrices);
+        Assert.Equal(Enumerable.Range(0, 100).Select(i => 2_000m + i), ethPrices);
+    }
+
+    /// <summary>
+    /// Проверяет, что обработка разных символов выполняется параллельно в разных партициях.
+    /// </summary>
+    [Fact]
+    public async Task StartAsync_WithDifferentSymbols_ProcessesInParallel()
+    {
+        const int partitionCount = 2;
+        var symbols = SelectSymbolsForDifferentPartitions(partitionCount);
+        var config = new MarketInstrumentsConfig
+        {
+            Profiles = new[]
+            {
+                new MarketInstrumentProfile
+                {
+                    Exchange = MarketExchange.Bybit,
+                    MarketType = MarketType.Spot,
+                    Transport = MarketDataSourceTransport.WebSocket,
+                    Symbols = symbols
+                }
+            }
+        };
+
+        var pipeline = new DataPipeline(
+            new CapturingAggregationService(),
+            new CapturingStorage(),
+            new DelayedAlertingService(TimeSpan.FromMilliseconds(20)),
+            new CapturingMonitoringService(),
+            new CapturingMarketDataEventBus(),
+            config,
+            NullLogger<DataPipeline>.Instance,
+            new PipelinePerformanceOptions
+            {
+                PartitionCount = partitionCount,
+                BatchSize = 64,
+                FlushInterval = TimeSpan.FromMilliseconds(50),
+                MaxInMemoryBatches = 8,
+                AlertingConcurrency = 8
+            });
+
+        var channel = Channel.CreateUnbounded<Tick>();
+        var baseTime = DateTimeOffset.UtcNow;
+        const int perSymbolTicks = 20;
+
+        for (var i = 0; i < perSymbolTicks; i++)
+        {
+            await channel.Writer.WriteAsync(new Tick
+            {
+                Source = "Bybit-WebSocket",
+                Symbol = symbols[0],
+                Price = 100m + i,
+                Volume = 1m,
+                Timestamp = baseTime.AddMilliseconds(i),
+                TradeId = $"s1-{i}"
+            });
+            await channel.Writer.WriteAsync(new Tick
+            {
+                Source = "Bybit-WebSocket",
+                Symbol = symbols[1],
+                Price = 200m + i,
+                Volume = 1m,
+                Timestamp = baseTime.AddMilliseconds(i),
+                TradeId = $"s2-{i}"
+            });
+        }
+
+        channel.Writer.Complete();
+
+        var stopwatch = Stopwatch.StartNew();
+        await pipeline.StartAsync(channel.Reader, CancellationToken.None);
+        stopwatch.Stop();
+
+        var serialEstimate = TimeSpan.FromMilliseconds(perSymbolTicks * symbols.Length * 20);
+        Assert.True(stopwatch.Elapsed < TimeSpan.FromMilliseconds(serialEstimate.TotalMilliseconds * 0.8));
+    }
+
     private sealed class CapturingAggregationService : IAggregationService
     {
         public List<NormalizedTick> MetricsTicks { get; } = new();
@@ -248,22 +398,37 @@ public sealed class DataPipelineTests
         public List<AggregatedCandle> StoredAggregates { get; } = new();
         public List<Alert> StoredAlerts { get; } = new();
 
+        public Task StoreRawTicksAsync(IReadOnlyCollection<RawTick> rawTicks, CancellationToken cancellationToken)
+        {
+            StoredRawTicks.AddRange(rawTicks);
+            return Task.CompletedTask;
+        }
+
         public Task StoreRawTickAsync(RawTick rawTick, CancellationToken cancellationToken)
         {
-            StoredRawTicks.Add(rawTick);
+            return StoreRawTicksAsync(new[] { rawTick }, cancellationToken);
+        }
+
+        public Task StoreTicksAsync(IReadOnlyCollection<NormalizedTick> ticks, CancellationToken cancellationToken)
+        {
+            StoredTicks.AddRange(ticks);
             return Task.CompletedTask;
         }
 
         public Task StoreTickAsync(NormalizedTick tick, CancellationToken cancellationToken)
         {
-            StoredTicks.Add(tick);
+            return StoreTicksAsync(new[] { tick }, cancellationToken);
+        }
+
+        public Task StoreAggregatesAsync(IReadOnlyCollection<AggregatedCandle> candles, CancellationToken cancellationToken)
+        {
+            StoredAggregates.AddRange(candles);
             return Task.CompletedTask;
         }
 
         public Task StoreAggregateAsync(AggregatedCandle candle, CancellationToken cancellationToken)
         {
-            StoredAggregates.Add(candle);
-            return Task.CompletedTask;
+            return StoreAggregatesAsync(new[] { candle }, cancellationToken);
         }
 
         public Task StoreInstrumentAsync(InstrumentMetadata metadata, CancellationToken cancellationToken)
@@ -375,5 +540,49 @@ public sealed class DataPipelineTests
             await Task.CompletedTask;
             yield break;
         }
+    }
+
+    private sealed class NoOpAlertingService : IAlertingService
+    {
+        public Task<IReadOnlyCollection<Alert>> HandleAsync(NormalizedTick tick, MetricsSnapshot metrics, CancellationToken cancellationToken)
+        {
+            return Task.FromResult((IReadOnlyCollection<Alert>)Array.Empty<Alert>());
+        }
+    }
+
+    private sealed class DelayedAlertingService : IAlertingService
+    {
+        private readonly TimeSpan _delay;
+
+        public DelayedAlertingService(TimeSpan delay)
+        {
+            _delay = delay;
+        }
+
+        public async Task<IReadOnlyCollection<Alert>> HandleAsync(NormalizedTick tick, MetricsSnapshot metrics, CancellationToken cancellationToken)
+        {
+            await Task.Delay(_delay, cancellationToken);
+            return Array.Empty<Alert>();
+        }
+    }
+
+    private static string[] SelectSymbolsForDifferentPartitions(int partitionCount)
+    {
+        var candidates = new[] { "BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT" };
+
+        for (var i = 0; i < candidates.Length; i++)
+        {
+            for (var j = i + 1; j < candidates.Length; j++)
+            {
+                var left = Math.Abs(StringComparer.OrdinalIgnoreCase.GetHashCode(candidates[i]) % partitionCount);
+                var right = Math.Abs(StringComparer.OrdinalIgnoreCase.GetHashCode(candidates[j]) % partitionCount);
+                if (left != right)
+                {
+                    return new[] { candidates[i], candidates[j] };
+                }
+            }
+        }
+
+        throw new InvalidOperationException("Не удалось подобрать символы в разные партиции.");
     }
 }

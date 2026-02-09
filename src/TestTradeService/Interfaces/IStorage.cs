@@ -8,6 +8,14 @@ namespace TestTradeService.Interfaces;
 public interface IStorage
 {
     /// <summary>
+    /// Сохраняет пакет сырых тиков вместе с исходным payload.
+    /// </summary>
+    /// <param name="rawTicks">Набор сырых тиков до нормализации.</param>
+    /// <param name="cancellationToken">Токен отмены.</param>
+    /// <returns>Задача пакетного сохранения сырых тиков.</returns>
+    Task StoreRawTicksAsync(IReadOnlyCollection<RawTick> rawTicks, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Сохраняет сырой тик вместе с исходным payload.
     /// </summary>
     /// <param name="rawTick">Сырой тик до нормализации.</param>
@@ -16,12 +24,28 @@ public interface IStorage
     Task StoreRawTickAsync(RawTick rawTick, CancellationToken cancellationToken);
 
     /// <summary>
+    /// Сохраняет пакет нормализованных тиков в хранилище.
+    /// </summary>
+    /// <param name="ticks">Набор нормализованных тиков.</param>
+    /// <param name="cancellationToken">Токен отмены.</param>
+    /// <returns>Задача пакетного сохранения тиков.</returns>
+    Task StoreTicksAsync(IReadOnlyCollection<NormalizedTick> ticks, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Сохраняет raw-тик в хранилище.
     /// </summary>
     /// <param name="tick">Нормализованный тик.</param>
     /// <param name="cancellationToken">Токен отмены.</param>
     /// <returns>Задача сохранения тика.</returns>
     Task StoreTickAsync(NormalizedTick tick, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Сохраняет пакет агрегированных свечей.
+    /// </summary>
+    /// <param name="candles">Набор агрегированных свечей.</param>
+    /// <param name="cancellationToken">Токен отмены.</param>
+    /// <returns>Задача пакетного сохранения свечей.</returns>
+    Task StoreAggregatesAsync(IReadOnlyCollection<AggregatedCandle> candles, CancellationToken cancellationToken);
 
     /// <summary>
     /// Сохраняет агрегированную свечу.

@@ -69,22 +69,28 @@ export function SourcesPage() {
     setEditIndex(index);
   };
 
-  const saveLocalEdit = async () => {
-    const values = await form.validateFields();
+  const saveLocalEdit = async (): Promise<MarketInstrumentProfileDto[] | null> => {
+    let values: SourceProfileFormModel;
+    try {
+      values = await form.validateFields();
+    } catch {
+      return null;
+    }
+
     const symbols = normalizeSymbols(values.symbols);
 
     if (symbols.length === 0) {
       message.error('Укажите минимум один тикер');
-      return;
+      return null;
     }
 
     if ((values.targetUpdateIntervalMs ?? 0) <= 0) {
       message.error('Интервал должен быть больше нуля');
-      return;
+      return null;
     }
 
     if (editIndex === null) {
-      return;
+      return localProfiles;
     }
 
     const next = [...localProfiles];
@@ -96,6 +102,30 @@ export function SourcesPage() {
     setLocalProfiles(next);
     setEditIndex(null);
     form.resetFields();
+    return next;
+  };
+
+  const saveConfig = async () => {
+    let profilesToPersist = localProfiles;
+    if (editIndex !== null) {
+      const next = await saveLocalEdit();
+      if (!next) {
+        return;
+      }
+
+      profilesToPersist = next;
+    }
+
+    saveMutation.mutate({ profiles: profilesToPersist });
+  };
+
+  const applyEditAndSave = async () => {
+    const next = await saveLocalEdit();
+    if (!next) {
+      return;
+    }
+
+    saveMutation.mutate({ profiles: next });
   };
 
   const tableData = localProfiles.map((profile, index) => ({ ...profile, key: `${profile.exchange}-${index}` }));
@@ -112,7 +142,7 @@ export function SourcesPage() {
           <Button
             type="primary"
             loading={saveMutation.isPending}
-            onClick={() => saveMutation.mutate({ profiles: localProfiles })}
+            onClick={saveConfig}
           >
             Сохранить
           </Button>
@@ -198,7 +228,7 @@ export function SourcesPage() {
           </Form.Item>
 
           <Space>
-            <Button type="primary" disabled={editIndex === null} onClick={saveLocalEdit}>
+            <Button type="primary" disabled={editIndex === null} onClick={applyEditAndSave}>
               Применить изменения
             </Button>
             <Button

@@ -31,18 +31,6 @@ export function MarketHubProvider({ children }: PropsWithChildren) {
   useEffect(() => {
     const connection = createMarketHubConnection();
     connectionRef.current = connection;
-    const tickHandler = () => {
-      // Tick events are handled on dedicated pages.
-    };
-    const aggregateHandler = () => {
-      // Aggregate events are handled on dedicated pages.
-    };
-    const monitoringHandler = () => {
-      // Monitoring events are handled on dedicated pages.
-    };
-    const alertHandler = () => {
-      // Alert events are handled on dedicated pages.
-    };
 
     connection.onreconnecting(() => {
       setConnectionState('Переподключение');
@@ -56,10 +44,6 @@ export function MarketHubProvider({ children }: PropsWithChildren) {
     connection.onclose(() => {
       setConnectionState('Отключено');
     });
-    connection.on('tick', tickHandler);
-    connection.on('aggregate', aggregateHandler);
-    connection.on('monitoring', monitoringHandler);
-    connection.on('alert', alertHandler);
 
     const start = async () => {
       try {

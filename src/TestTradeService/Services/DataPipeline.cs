@@ -1,4 +1,3 @@
-п»їusing System.Text.Json;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using TestTradeService.Interfaces;
@@ -8,10 +7,12 @@ using TestTradeService.Models;
 namespace TestTradeService.Services;
 
 /// <summary>
-/// РћСЃРЅРѕРІРЅРѕР№ РєРѕРЅРІРµР№РµСЂ РѕР±СЂР°Р±РѕС‚РєРё СЂС‹РЅРѕС‡РЅС‹С… РґР°РЅРЅС‹С….
+/// Основной конвейер обработки рыночных данных.
 /// </summary>
 public sealed class DataPipeline : IDataPipeline
 {
+    private const string MissingPayload = "{\"error\":\"payload_missing\"}";
+
     private readonly TickNormalizer _normalizer = new();
     private readonly TickFilter _filter;
     private readonly TickDeduplicator _deduplicator = new();
@@ -21,23 +22,27 @@ public sealed class DataPipeline : IDataPipeline
     private readonly IMonitoringService _monitoring;
     private readonly IMarketDataEventBus _eventBus;
     private readonly ILogger<DataPipeline> _logger;
+    private readonly PipelinePerformanceOptions _performanceOptions;
+    private readonly SemaphoreSlim _alertingGate;
+    private readonly object _aggregationSync = new();
     private long _consumedTickCount;
 
     /// <summary>
-    /// Р’РѕР·РІСЂР°С‰Р°РµС‚ РєРѕР»РёС‡РµСЃС‚РІРѕ С‚РёРєРѕРІ, СЃС‡РёС‚Р°РЅРЅС‹С… РєРѕРЅРІРµР№РµСЂРѕРј РёР· РІС…РѕРґРЅРѕРіРѕ РєР°РЅР°Р»Р°.
+    /// Возвращает количество тиков, считанных конвейером из входного канала.
     /// </summary>
     public long ConsumedTickCount => Interlocked.Read(ref _consumedTickCount);
 
     /// <summary>
-    /// РРЅРёС†РёР°Р»РёР·РёСЂСѓРµС‚ РєРѕРЅРІРµР№РµСЂ РѕР±СЂР°Р±РѕС‚РєРё С‚РёРєРѕРІ.
+    /// Инициализирует конвейер обработки тиков.
     /// </summary>
-    /// <param name="aggregationService">РЎРµСЂРІРёСЃ Р°РіСЂРµРіР°С†РёРё С‚РёРєРѕРІ.</param>
-    /// <param name="storage">РҐСЂР°РЅРёР»РёС‰Рµ РґР°РЅРЅС‹С….</param>
-    /// <param name="alerting">РЎРµСЂРІРёСЃ РѕРїРѕРІРµС‰РµРЅРёР№.</param>
-    /// <param name="monitoring">РЎРµСЂРІРёСЃ РјРѕРЅРёС‚РѕСЂРёРЅРіР°.</param>
-    /// <param name="eventBus">РЁРёРЅР° СЃРѕР±С‹С‚РёР№ СЂС‹РЅРѕС‡РЅРѕРіРѕ РїРѕС‚РѕРєР°.</param>
-    /// <param name="instrumentsConfig">РљРѕРЅС„РёРіСѓСЂР°С†РёСЏ РёРЅСЃС‚СЂСѓРјРµРЅС‚РѕРІ.</param>
-    /// <param name="logger">Р›РѕРіРіРµСЂ РєРѕРЅРІРµР№РµСЂР°.</param>
+    /// <param name="aggregationService">Сервис агрегации тиков.</param>
+    /// <param name="storage">Хранилище данных.</param>
+    /// <param name="alerting">Сервис оповещений.</param>
+    /// <param name="monitoring">Сервис мониторинга.</param>
+    /// <param name="eventBus">Шина событий рыночного потока.</param>
+    /// <param name="instrumentsConfig">Конфигурация инструментов.</param>
+    /// <param name="logger">Логгер конвейера.</param>
+    /// <param name="performanceOptions">Настройки производительности конвейера.</param>
     public DataPipeline(
         IAggregationService aggregationService,
         IStorage storage,
@@ -45,7 +50,8 @@ public sealed class DataPipeline : IDataPipeline
         IMonitoringService monitoring,
         IMarketDataEventBus eventBus,
         MarketInstrumentsConfig instrumentsConfig,
-        ILogger<DataPipeline> logger)
+        ILogger<DataPipeline> logger,
+        PipelinePerformanceOptions? performanceOptions = null)
     {
         _aggregationService = aggregationService;
         _storage = storage;
@@ -54,56 +60,140 @@ public sealed class DataPipeline : IDataPipeline
         _eventBus = eventBus;
         _filter = new TickFilter(instrumentsConfig.GetAllSymbols());
         _logger = logger;
+        _performanceOptions = performanceOptions ?? new PipelinePerformanceOptions();
+        _alertingGate = new SemaphoreSlim(Math.Max(1, _performanceOptions.AlertingConcurrency));
     }
 
     /// <summary>
-    /// Р—Р°РїСѓСЃРєР°РµС‚ С‡С‚РµРЅРёРµ С‚РёРєРѕРІ РёР· РєР°РЅР°Р»Р° Рё РёС… РїРѕСЃР»РµРґРѕРІР°С‚РµР»СЊРЅСѓСЋ РѕР±СЂР°Р±РѕС‚РєСѓ.
+    /// Запускает чтение тиков из канала и их обработку с партиционированием по символу.
     /// </summary>
-    /// <param name="reader">РљР°РЅР°Р» РґР»СЏ С‡С‚РµРЅРёСЏ С‚РёРєРѕРІ.</param>
-    /// <param name="cancellationToken">РўРѕРєРµРЅ РѕС‚РјРµРЅС‹.</param>
-    /// <returns>Р—Р°РґР°С‡Р° РІС‹РїРѕР»РЅРµРЅРёСЏ РєРѕРЅРІРµР№РµСЂР°.</returns>
+    /// <param name="reader">Канал для чтения тиков.</param>
+    /// <param name="cancellationToken">Токен отмены.</param>
+    /// <returns>Задача выполнения конвейера.</returns>
     public async Task StartAsync(ChannelReader<Tick> reader, CancellationToken cancellationToken)
     {
-        await foreach (var tick in reader.ReadAllAsync(cancellationToken))
+        var partitionCount = Math.Max(1, _performanceOptions.PartitionCount);
+        var channelCapacity = Math.Max(1, _performanceOptions.BatchSize) * Math.Max(1, _performanceOptions.MaxInMemoryBatches);
+        var partitions = CreatePartitions(partitionCount, channelCapacity);
+
+        await using var storageWriter = new BufferedStorageWriter(_storage, _performanceOptions, _logger);
+        var partitionTasks = partitions
+            .Select((channel, index) => ProcessPartitionAsync(index, channel.Reader, storageWriter, cancellationToken))
+            .ToArray();
+
+        Exception? processingError = null;
+
+        try
         {
-            Interlocked.Increment(ref _consumedTickCount);
-            await _storage.StoreRawTickAsync(BuildRawTick(tick), cancellationToken);
-
-            var normalized = _normalizer.Normalize(tick);
-            if (!_filter.IsAllowed(normalized))
+            await foreach (var tick in reader.ReadAllAsync(cancellationToken))
             {
-                continue;
+                Interlocked.Increment(ref _consumedTickCount);
+
+                var rawTick = BuildRawTick(tick);
+                var normalized = _normalizer.Normalize(tick);
+                if (!_filter.IsAllowed(normalized))
+                {
+                    continue;
+                }
+
+                if (_deduplicator.IsDuplicate(normalized))
+                {
+                    continue;
+                }
+
+                var partitionIndex = GetPartitionIndex(normalized.Symbol, partitionCount);
+                await partitions[partitionIndex].Writer.WriteAsync(new PipelineItem(rawTick, normalized), cancellationToken);
+            }
+        }
+        catch (Exception ex)
+        {
+            processingError = ex;
+            throw;
+        }
+        finally
+        {
+            foreach (var partition in partitions)
+            {
+                partition.Writer.TryComplete(processingError);
             }
 
-            if (_deduplicator.IsDuplicate(normalized))
-            {
-                continue;
-            }
+            await Task.WhenAll(partitionTasks);
+        }
 
-            var delay = DateTimeOffset.UtcNow - normalized.Timestamp;
+        _logger.LogInformation("Pipeline stopped");
+    }
+
+    private async Task ProcessPartitionAsync(
+        int partitionIndex,
+        ChannelReader<PipelineItem> reader,
+        BufferedStorageWriter storageWriter,
+        CancellationToken cancellationToken)
+    {
+        await foreach (var item in reader.ReadAllAsync(cancellationToken))
+        {
+            var normalized = item.NormalizedTick;
+            var now = DateTimeOffset.UtcNow;
+
+            await storageWriter.StoreRawTickAsync(item.RawTick, cancellationToken);
+            await storageWriter.StoreTickAsync(normalized, cancellationToken);
+
+            var delay = now - normalized.Timestamp;
             _monitoring.RecordDelay(normalized.Source, delay);
             _monitoring.RecordTick(normalized.Source, normalized);
             _eventBus.PublishTick(normalized);
 
-            await _storage.StoreTickAsync(normalized, cancellationToken);
-            var metrics = _aggregationService.UpdateMetrics(normalized);
-            var aggregates = _aggregationService.Update(normalized);
+            MetricsSnapshot metrics;
+            AggregatedCandle[] aggregates;
+            lock (_aggregationSync)
+            {
+                metrics = _aggregationService.UpdateMetrics(normalized);
+                aggregates = _aggregationService.Update(normalized).ToArray();
+            }
 
             foreach (var candle in aggregates)
             {
                 _monitoring.RecordAggregate(normalized.Source, candle);
-                await _storage.StoreAggregateAsync(candle, cancellationToken);
+                await storageWriter.StoreAggregateAsync(candle, cancellationToken);
                 _eventBus.PublishAggregate(candle);
             }
 
-            var alerts = await _alerting.HandleAsync(normalized, metrics, cancellationToken);
-            foreach (var alert in alerts)
+            await _alertingGate.WaitAsync(cancellationToken);
+            try
             {
-                _eventBus.PublishAlert(alert);
+                var alerts = await _alerting.HandleAsync(normalized, metrics, cancellationToken);
+                foreach (var alert in alerts)
+                {
+                    _eventBus.PublishAlert(alert);
+                }
+            }
+            finally
+            {
+                _alertingGate.Release();
             }
         }
 
-        _logger.LogInformation("Pipeline stopped");
+        _logger.LogInformation("Pipeline partition {PartitionIndex} stopped", partitionIndex);
+    }
+
+    private static Channel<PipelineItem>[] CreatePartitions(int partitionCount, int capacity)
+    {
+        var channels = new Channel<PipelineItem>[partitionCount];
+        for (var i = 0; i < partitionCount; i++)
+        {
+            channels[i] = Channel.CreateBounded<PipelineItem>(new BoundedChannelOptions(capacity)
+            {
+                FullMode = BoundedChannelFullMode.Wait,
+                SingleReader = true,
+                SingleWriter = false
+            });
+        }
+
+        return channels;
+    }
+
+    private static int GetPartitionIndex(string symbol, int partitionCount)
+    {
+        return Math.Abs(StringComparer.OrdinalIgnoreCase.GetHashCode(symbol) % partitionCount);
     }
 
     private RawTick BuildRawTick(Tick tick)
@@ -124,30 +214,14 @@ public sealed class DataPipeline : IDataPipeline
         };
     }
 
-    private string BuildPayload(Tick tick)
+    private static string BuildPayload(Tick tick)
     {
         if (!string.IsNullOrWhiteSpace(tick.RawPayload))
         {
             return tick.RawPayload;
         }
 
-        try
-        {
-            return JsonSerializer.Serialize(new
-            {
-                source = tick.Source,
-                symbol = tick.Symbol,
-                price = tick.Price,
-                volume = tick.Volume,
-                timestamp = tick.Timestamp,
-                tradeId = tick.TradeId
-            });
-        }
-        catch (Exception exception)
-        {
-            _logger.LogWarning(exception, "Failed to serialize fallback raw payload for source {Source}", tick.Source);
-            return "{\"error\":\"payload_serialize_failed\"}";
-        }
+        return MissingPayload;
     }
 
     private static string ExtractExchangeFromSource(string source)
@@ -155,4 +229,6 @@ public sealed class DataPipeline : IDataPipeline
         var parts = source.Split('-', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         return parts.Length > 0 ? parts[0] : source;
     }
+
+    private readonly record struct PipelineItem(RawTick RawTick, NormalizedTick NormalizedTick);
 }

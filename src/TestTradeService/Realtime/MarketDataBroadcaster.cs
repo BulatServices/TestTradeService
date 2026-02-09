@@ -101,6 +101,11 @@ public sealed class MarketDataBroadcaster : BackgroundService
 
     private static bool Matches(ClientSubscriptionSnapshot state, string exchange, string symbol)
     {
+        if (!state.StreamSubscribed)
+        {
+            return false;
+        }
+
         if (!string.IsNullOrWhiteSpace(state.Exchange)
             && !string.Equals(state.Exchange, exchange, StringComparison.OrdinalIgnoreCase))
         {

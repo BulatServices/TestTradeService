@@ -25,13 +25,18 @@ public sealed class HybridStorage : IStorage
     }
 
     /// <summary>
-    /// Сохраняет сырой тик в TimescaleDB.
+    /// Сохраняет пакет сырых тиков в TimescaleDB.
     /// </summary>
-    /// <param name="rawTick">Сырой тик до нормализации.</param>
+    /// <param name="rawTicks">Набор сырых тиков до нормализации.</param>
     /// <param name="cancellationToken">Токен отмены.</param>
-    /// <returns>Задача сохранения сырого тика.</returns>
-    public async Task StoreRawTickAsync(RawTick rawTick, CancellationToken cancellationToken)
+    /// <returns>Задача пакетного сохранения сырых тиков.</returns>
+    public async Task StoreRawTicksAsync(IReadOnlyCollection<RawTick> rawTicks, CancellationToken cancellationToken)
     {
+        if (rawTicks.Count == 0)
+        {
+            return;
+        }
+
         const string sql = """
             insert into market.raw_ticks
             (
@@ -66,7 +71,7 @@ public sealed class HybridStorage : IStorage
             on conflict (fingerprint, "time") do nothing
             """;
 
-        var payload = new
+        var payloads = rawTicks.Select(rawTick => new
         {
             Time = rawTick.EventTimestamp,
             rawTick.ReceivedAt,
@@ -80,10 +85,44 @@ public sealed class HybridStorage : IStorage
             Payload = SerializePayload(rawTick.Payload),
             Metadata = SerializeMetadata(rawTick.Metadata),
             Fingerprint = BuildRawFingerprint(rawTick)
-        };
+        }).ToArray();
 
         await using var connection = await _timeseriesDataSource.DataSource.OpenConnectionAsync(cancellationToken);
-        await connection.ExecuteAsync(new CommandDefinition(sql, payload, cancellationToken: cancellationToken));
+        await connection.ExecuteAsync(new CommandDefinition(sql, payloads, cancellationToken: cancellationToken));
+    }
+
+    /// <summary>
+    /// Сохраняет сырой тик в TimescaleDB.
+    /// </summary>
+    /// <param name="rawTick">Сырой тик до нормализации.</param>
+    /// <param name="cancellationToken">Токен отмены.</param>
+    /// <returns>Задача сохранения сырого тика.</returns>
+    public async Task StoreRawTickAsync(RawTick rawTick, CancellationToken cancellationToken)
+    {
+        await StoreRawTicksAsync(new[] { rawTick }, cancellationToken);
+    }
+
+    /// <summary>
+    /// Сохраняет пакет нормализованных тиков в TimescaleDB.
+    /// </summary>
+    /// <param name="ticks">Набор нормализованных тиков.</param>
+    /// <param name="cancellationToken">Токен отмены.</param>
+    /// <returns>Задача пакетного сохранения тиков.</returns>
+    public async Task StoreTicksAsync(IReadOnlyCollection<NormalizedTick> ticks, CancellationToken cancellationToken)
+    {
+        if (ticks.Count == 0)
+        {
+            return;
+        }
+
+        const string sql = """
+            insert into market.ticks("time", source, symbol, price, volume, fingerprint)
+            values (@Timestamp, @Source, @Symbol, @Price, @Volume, @Fingerprint)
+            on conflict (fingerprint, "time") do nothing
+            """;
+
+        await using var connection = await _timeseriesDataSource.DataSource.OpenConnectionAsync(cancellationToken);
+        await connection.ExecuteAsync(new CommandDefinition(sql, ticks, cancellationToken: cancellationToken));
     }
 
     /// <summary>
@@ -94,24 +133,22 @@ public sealed class HybridStorage : IStorage
     /// <returns>Задача сохранения тика.</returns>
     public async Task StoreTickAsync(NormalizedTick tick, CancellationToken cancellationToken)
     {
-        const string sql = """
-            insert into market.ticks("time", source, symbol, price, volume, fingerprint)
-            values (@Timestamp, @Source, @Symbol, @Price, @Volume, @Fingerprint)
-            on conflict (fingerprint, "time") do nothing
-            """;
-
-        await using var connection = await _timeseriesDataSource.DataSource.OpenConnectionAsync(cancellationToken);
-        await connection.ExecuteAsync(new CommandDefinition(sql, tick, cancellationToken: cancellationToken));
+        await StoreTicksAsync(new[] { tick }, cancellationToken);
     }
 
     /// <summary>
-    /// Сохраняет агрегированную свечу в TimescaleDB.
+    /// Сохраняет пакет агрегированных свечей в TimescaleDB.
     /// </summary>
-    /// <param name="candle">Агрегированная свеча.</param>
+    /// <param name="candles">Набор агрегированных свечей.</param>
     /// <param name="cancellationToken">Токен отмены.</param>
-    /// <returns>Задача сохранения свечи.</returns>
-    public async Task StoreAggregateAsync(AggregatedCandle candle, CancellationToken cancellationToken)
+    /// <returns>Задача пакетного сохранения свечей.</returns>
+    public async Task StoreAggregatesAsync(IReadOnlyCollection<AggregatedCandle> candles, CancellationToken cancellationToken)
     {
+        if (candles.Count == 0)
+        {
+            return;
+        }
+
         const string sql = """
             insert into market.candles("time", source, symbol, window_seconds, open, high, low, close, volume, count)
             values (@WindowStart, @Source, @Symbol, @WindowSeconds, @Open, @High, @Low, @Close, @Volume, @Count)
@@ -125,7 +162,7 @@ public sealed class HybridStorage : IStorage
                 count = excluded.count
             """;
 
-        var payload = new
+        var payloads = candles.Select(candle => new
         {
             candle.WindowStart,
             candle.Source,
@@ -137,10 +174,21 @@ public sealed class HybridStorage : IStorage
             candle.Close,
             candle.Volume,
             candle.Count
-        };
+        }).ToArray();
 
         await using var connection = await _timeseriesDataSource.DataSource.OpenConnectionAsync(cancellationToken);
-        await connection.ExecuteAsync(new CommandDefinition(sql, payload, cancellationToken: cancellationToken));
+        await connection.ExecuteAsync(new CommandDefinition(sql, payloads, cancellationToken: cancellationToken));
+    }
+
+    /// <summary>
+    /// Сохраняет агрегированную свечу в TimescaleDB.
+    /// </summary>
+    /// <param name="candle">Агрегированная свеча.</param>
+    /// <param name="cancellationToken">Токен отмены.</param>
+    /// <returns>Задача сохранения свечи.</returns>
+    public async Task StoreAggregateAsync(AggregatedCandle candle, CancellationToken cancellationToken)
+    {
+        await StoreAggregatesAsync(new[] { candle }, cancellationToken);
     }
 
     /// <summary>

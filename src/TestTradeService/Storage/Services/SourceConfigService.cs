@@ -38,25 +38,7 @@ public sealed class SourceConfigService : ISourceConfigService
     /// <returns>Конфигурация источников.</returns>
     public Task<SourceConfigDto> GetAsync(CancellationToken cancellationToken)
     {
-        var dto = new SourceConfigDto
-        {
-            Profiles = _instrumentsConfig.Profiles
-                .Select(profile => new SourceProfileDto
-                {
-                    Exchange = profile.Exchange.ToString(),
-                    MarketType = profile.MarketType.ToString(),
-                    Transport = profile.Transport.ToString(),
-                    Symbols = profile.Symbols.ToArray(),
-                    TargetUpdateIntervalMs = (int)Math.Max(1, profile.TargetUpdateInterval.TotalMilliseconds),
-                    IsEnabled = true
-                })
-                .OrderBy(x => x.Exchange, StringComparer.Ordinal)
-                .ThenBy(x => x.MarketType, StringComparer.Ordinal)
-                .ThenBy(x => x.Transport, StringComparer.Ordinal)
-                .ToArray()
-        };
-
-        return Task.FromResult(dto);
+        return GetInternalAsync(cancellationToken);
     }
 
     /// <summary>
@@ -75,16 +57,93 @@ public sealed class SourceConfigService : ISourceConfigService
 
         if (_metadataDataSource is not null)
         {
-            await PersistToDatabaseAsync(request, cancellationToken);
+            await PersistToDatabaseAsync(profiles, cancellationToken);
+            profiles = await LoadProfilesFromDatabaseAsync(cancellationToken);
         }
 
         _instrumentsConfig.ReplaceProfiles(profiles);
         await _runtimeReconfigurationService.ApplySourcesAsync(cancellationToken);
 
-        return await GetAsync(cancellationToken);
+        return ToDto(profiles);
     }
 
-    private async Task PersistToDatabaseAsync(SourceConfigDto request, CancellationToken cancellationToken)
+    private async Task<SourceConfigDto> GetInternalAsync(CancellationToken cancellationToken)
+    {
+        var profiles = _metadataDataSource is null
+            ? _instrumentsConfig.Profiles.ToArray()
+            : await LoadProfilesFromDatabaseAsync(cancellationToken);
+
+        _instrumentsConfig.ReplaceProfiles(profiles);
+        return ToDto(profiles);
+    }
+
+    private static SourceConfigDto ToDto(IReadOnlyCollection<MarketInstrumentProfile> profiles)
+    {
+        return new SourceConfigDto
+        {
+            Profiles = profiles
+                .Select(profile => new SourceProfileDto
+                {
+                    Exchange = profile.Exchange.ToString(),
+                    MarketType = profile.MarketType.ToString(),
+                    Transport = profile.Transport.ToString(),
+                    Symbols = profile.Symbols.ToArray(),
+                    TargetUpdateIntervalMs = (int)Math.Max(1, profile.TargetUpdateInterval.TotalMilliseconds),
+                    IsEnabled = true
+                })
+                .OrderBy(x => x.Exchange, StringComparer.Ordinal)
+                .ThenBy(x => x.MarketType, StringComparer.Ordinal)
+                .ThenBy(x => x.Transport, StringComparer.Ordinal)
+                .ToArray()
+        };
+    }
+
+    private async Task<MarketInstrumentProfile[]> LoadProfilesFromDatabaseAsync(CancellationToken cancellationToken)
+    {
+        const string sql = """
+            select
+                exchange,
+                market_type as MarketType,
+                transport as Transport,
+                symbol,
+                target_update_interval_ms as TargetUpdateIntervalMs
+            from meta.instruments
+            where is_active = true
+            """;
+
+        await using var connection = await _metadataDataSource!.DataSource.OpenConnectionAsync(cancellationToken);
+        var rows = (await connection.QueryAsync<InstrumentConfigRow>(
+            new CommandDefinition(sql, cancellationToken: cancellationToken))).ToArray();
+
+        return rows
+            .GroupBy(r => $"{r.Exchange}::{r.MarketType}::{r.Transport}", StringComparer.OrdinalIgnoreCase)
+            .Select(group =>
+            {
+                var first = group.First();
+                if (!Enum.TryParse<MarketExchange>(first.Exchange, true, out var exchange))
+                {
+                    return null;
+                }
+
+                return new MarketInstrumentProfile
+                {
+                    Exchange = exchange,
+                    MarketType = Enum.Parse<MarketType>(first.MarketType, true),
+                    Transport = Enum.Parse<MarketDataSourceTransport>(first.Transport, true),
+                    Symbols = group
+                        .Select(x => x.Symbol)
+                        .Where(x => !string.IsNullOrWhiteSpace(x))
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .ToArray(),
+                    TargetUpdateInterval = TimeSpan.FromMilliseconds(group.Max(x => x.TargetUpdateIntervalMs))
+                };
+            })
+            .Where(profile => profile is not null)
+            .Select(profile => profile!)
+            .ToArray();
+    }
+
+    private async Task PersistToDatabaseAsync(IReadOnlyCollection<MarketInstrumentProfile> profiles, CancellationToken cancellationToken)
     {
         await using var connection = await _metadataDataSource!.DataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
@@ -139,23 +198,23 @@ public sealed class SourceConfigService : ISourceConfigService
                 updated_at = now();
             """;
 
-        foreach (var profile in request.Profiles.Where(x => x.IsEnabled))
+        foreach (var profile in profiles)
         {
             foreach (var symbol in profile.Symbols)
             {
                 var (baseAsset, quoteAsset) = ParseSymbol(symbol);
-                var isPerp = string.Equals(profile.MarketType, "Perp", StringComparison.OrdinalIgnoreCase);
+                var isPerp = profile.MarketType == MarketType.Perp;
                 await connection.ExecuteAsync(new CommandDefinition(upsertSql, new
                 {
-                    profile.Exchange,
-                    profile.MarketType,
-                    profile.Transport,
+                    Exchange = profile.Exchange.ToString(),
+                    MarketType = profile.MarketType.ToString(),
+                    Transport = profile.Transport.ToString(),
                     Symbol = symbol,
                     BaseAsset = baseAsset,
                     QuoteAsset = quoteAsset,
                     Description = $"{symbol} {profile.MarketType}",
                     ContractSize = isPerp ? 1m : (decimal?)null,
-                    profile.TargetUpdateIntervalMs
+                    TargetUpdateIntervalMs = (int)Math.Max(1, profile.TargetUpdateInterval.TotalMilliseconds)
                 }, transaction: transaction, cancellationToken: cancellationToken));
             }
         }
@@ -209,5 +268,14 @@ public sealed class SourceConfigService : ISourceConfigService
             _ = Enum.Parse<MarketType>(profile.MarketType, true);
             _ = Enum.Parse<MarketDataSourceTransport>(profile.Transport, true);
         }
+    }
+
+    private sealed record InstrumentConfigRow
+    {
+        public required string Exchange { get; init; }
+        public required string MarketType { get; init; }
+        public required string Transport { get; init; }
+        public required string Symbol { get; init; }
+        public required int TargetUpdateIntervalMs { get; init; }
     }
 }
