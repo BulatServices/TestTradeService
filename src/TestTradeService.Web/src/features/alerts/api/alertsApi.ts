@@ -25,7 +25,7 @@ export function getAlertRules(): Promise<AlertRulesResponseDto> {
   return requestJson('/api/v1/alerts/rules', alertRulesResponseSchema);
 }
 
-export function putAlertRules(payload: { items: AlertRuleConfigDto[] }): Promise<AlertRulesResponseDto> {
+export function putAlertRules(payload: { items: AlertRuleConfigDto[]; globalChannels: string[] }): Promise<AlertRulesResponseDto> {
   return requestJson('/api/v1/alerts/rules', alertRulesResponseSchema, {
     method: 'PUT',
     body: JSON.stringify(payload)

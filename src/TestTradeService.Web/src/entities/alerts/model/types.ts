@@ -21,7 +21,8 @@ export const alertsResponseSchema = z.object({
 });
 
 export const alertRulesResponseSchema = z.object({
-  items: z.array(alertRuleConfigSchema)
+  items: z.array(alertRuleConfigSchema),
+  globalChannels: z.array(z.string())
 });
 
 export type AlertDto = z.infer<typeof alertSchema>;

@@ -80,10 +80,12 @@ public sealed class AlertReadRepository : IAlertReadRepository
     {
         var repository = new PostgresConfigurationRepository(_metadataDataSource);
         var rules = await repository.GetAlertRulesAsync(cancellationToken);
+        var globalChannels = ExtractGlobalChannels(rules);
 
         return new AlertRulesResponseDto
         {
-            Items = rules.Select(Map).ToArray()
+            Items = rules.Where(x => !IsGlobalConfig(x)).Select(Map).ToArray(),
+            GlobalChannels = globalChannels
         };
     }
 
@@ -102,6 +104,22 @@ public sealed class AlertReadRepository : IAlertReadRepository
             Symbol = item.Symbol,
             Parameters = item.Parameters
         };
+    }
+
+    private static IReadOnlyCollection<string> ExtractGlobalChannels(IEnumerable<AlertRuleConfig> items)
+    {
+        var globalConfig = items.FirstOrDefault(IsGlobalConfig);
+        if (globalConfig is null)
+        {
+            return Array.Empty<string>();
+        }
+
+        return AlertingChannels.ParseCsv(globalConfig.Parameters.GetValueOrDefault(AlertingChannels.ChannelsParameterKey));
+    }
+
+    private static bool IsGlobalConfig(AlertRuleConfig item)
+    {
+        return string.Equals(item.RuleName, AlertingChannels.GlobalRuleName, StringComparison.OrdinalIgnoreCase);
     }
 
     private sealed record AlertRow

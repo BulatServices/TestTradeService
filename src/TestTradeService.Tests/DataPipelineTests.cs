@@ -5,6 +5,7 @@ using TestTradeService.Ingestion.Configuration;
 using TestTradeService.Interfaces;
 using TestTradeService.Models;
 using TestTradeService.Services;
+using TestTradeService.Storage;
 using Xunit;
 
 namespace TestTradeService.Tests;
@@ -26,6 +27,7 @@ public sealed class DataPipelineTests
         var alerting = new AlertingService(
             new[] { new AlwaysMatchRule() },
             new INotifier[] { new CapturingNotifier() },
+            new AlertRuleConfigProvider(Array.Empty<AlertRuleConfig>()),
             alertingStorage,
             NullLogger<AlertingService>.Instance);
         var monitoring = new CapturingMonitoringService();
@@ -89,6 +91,7 @@ public sealed class DataPipelineTests
         var alerting = new AlertingService(
             new[] { new AlwaysMatchRule() },
             new INotifier[] { new CapturingNotifier() },
+            new AlertRuleConfigProvider(Array.Empty<AlertRuleConfig>()),
             alertingStorage,
             NullLogger<AlertingService>.Instance);
         var monitoring = new CapturingMonitoringService();
@@ -149,6 +152,7 @@ public sealed class DataPipelineTests
         var alerting = new AlertingService(
             new[] { new AlwaysMatchRule() },
             new INotifier[] { new CapturingNotifier() },
+            new AlertRuleConfigProvider(Array.Empty<AlertRuleConfig>()),
             alertingStorage,
             NullLogger<AlertingService>.Instance);
         var monitoring = new CapturingMonitoringService();
@@ -231,7 +235,8 @@ public sealed class DataPipelineTests
                 Window = TimeSpan.FromMinutes(1),
                 AveragePrice = tick.Price,
                 Volatility = 0,
-                Count = 1
+                Count = 1,
+                AverageVolume = tick.Volume
             };
         }
     }

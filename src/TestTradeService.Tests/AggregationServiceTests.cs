@@ -59,12 +59,14 @@ public sealed class AggregationServiceTests
         Assert.Equal(2, snapshot.Count);
         Assert.Equal(15m, snapshot.AveragePrice);
         Assert.Equal(5m, snapshot.Volatility);
+        Assert.Equal(1m, snapshot.AverageVolume);
 
         snapshot = service.UpdateMetrics(tick3);
 
         Assert.Equal(2, snapshot.Count);
         Assert.Equal(25m, snapshot.AveragePrice);
         Assert.Equal(5m, snapshot.Volatility);
+        Assert.Equal(1m, snapshot.AverageVolume);
     }
 
     private static NormalizedTick CreateTick(DateTimeOffset timestamp, decimal price, decimal volume)

@@ -41,13 +41,21 @@ public sealed class InMemoryAlertRepository : IAlertReadRepository, IAlertRuleWr
     /// <returns>Ответ с правилами.</returns>
     public Task<AlertRulesResponseDto> GetAlertRulesAsync(CancellationToken cancellationToken)
     {
-        var items = _configProvider.GetAll()
+        var rules = _configProvider.GetAll();
+        var globalChannels = rules
+            .Where(item => string.Equals(item.RuleName, AlertingChannels.GlobalRuleName, StringComparison.OrdinalIgnoreCase))
+            .Select(item => AlertingChannels.ParseCsv(item.Parameters.GetValueOrDefault(AlertingChannels.ChannelsParameterKey)))
+            .FirstOrDefault() ?? Array.Empty<string>();
+
+        var items = rules
+            .Where(item => !string.Equals(item.RuleName, AlertingChannels.GlobalRuleName, StringComparison.OrdinalIgnoreCase))
             .Select(AlertReadRepository.Map)
             .ToArray();
 
         return Task.FromResult(new AlertRulesResponseDto
         {
-            Items = items
+            Items = items,
+            GlobalChannels = globalChannels
         });
     }
 
@@ -59,14 +67,32 @@ public sealed class InMemoryAlertRepository : IAlertReadRepository, IAlertRuleWr
     /// <returns>Задача обновления правил.</returns>
     public Task SaveAlertRulesAsync(PutAlertRulesRequest request, CancellationToken cancellationToken)
     {
-        _configProvider.Update(request.Items.Select(item => new AlertRuleConfig
+        var globalChannels = AlertingChannels.Normalize(request.GlobalChannels ?? Array.Empty<string>());
+        var ruleItems = request.Items
+            .Where(item => !string.Equals(item.RuleName, AlertingChannels.GlobalRuleName, StringComparison.OrdinalIgnoreCase));
+
+        var updatedItems = ruleItems.Select(item => new AlertRuleConfig
         {
             RuleName = item.RuleName,
             Enabled = item.Enabled,
             Exchange = item.Exchange,
             Symbol = item.Symbol,
             Parameters = new Dictionary<string, string>(item.Parameters, StringComparer.OrdinalIgnoreCase)
-        }).ToArray());
+        }).ToList();
+
+        updatedItems.Add(new AlertRuleConfig
+        {
+            RuleName = AlertingChannels.GlobalRuleName,
+            Enabled = true,
+            Exchange = null,
+            Symbol = null,
+            Parameters = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                [AlertingChannels.ChannelsParameterKey] = AlertingChannels.ToCsv(globalChannels)
+            }
+        });
+
+        _configProvider.Update(updatedItems.ToArray());
 
         return Task.CompletedTask;
     }

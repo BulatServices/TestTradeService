@@ -70,7 +70,8 @@ public sealed class PriceThresholdRuleTests
             Window = TimeSpan.FromMinutes(1),
             AveragePrice = 20_000m,
             Volatility = 1m,
-            Count = 1
+            Count = 1,
+            AverageVolume = 1m
         };
     }
 }

@@ -181,6 +181,7 @@ public sealed class AggregationService : IAggregationService
 
             var count = _ticks.Count;
             var avg = count == 0 ? 0 : _ticks.Average(t => t.Price);
+            var avgVolume = count == 0 ? 0 : _ticks.Average(t => t.Volume);
             var variance = count == 0 ? 0 : _ticks.Average(t => Math.Pow((double)(t.Price - avg), 2));
             var volatility = (decimal)Math.Sqrt(variance);
 
@@ -191,7 +192,8 @@ public sealed class AggregationService : IAggregationService
                 Window = _window,
                 AveragePrice = avg,
                 Volatility = volatility,
-                Count = count
+                Count = count,
+                AverageVolume = avgVolume
             };
         }
     }

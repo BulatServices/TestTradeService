@@ -32,6 +32,23 @@ public sealed class AlertRuleWriteRepository : IAlertRuleWriteRepository
     /// <returns>Задача сохранения правил.</returns>
     public async Task SaveAlertRulesAsync(PutAlertRulesRequest request, CancellationToken cancellationToken)
     {
+        var globalChannels = AlertingChannels.Normalize(request.GlobalChannels ?? Array.Empty<string>());
+        var effectiveRules = request.Items
+            .Where(item => !string.Equals(item.RuleName, AlertingChannels.GlobalRuleName, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        effectiveRules.Add(new AlertRuleConfigDto
+        {
+            RuleName = AlertingChannels.GlobalRuleName,
+            Enabled = true,
+            Exchange = null,
+            Symbol = null,
+            Parameters = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                [AlertingChannels.ChannelsParameterKey] = AlertingChannels.ToCsv(globalChannels)
+            }
+        });
+
         await using var connection = await _metadataDataSource.DataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
@@ -49,7 +66,7 @@ public sealed class AlertRuleWriteRepository : IAlertRuleWriteRepository
             values (@RuleDefinitionId, @ParamKey, @ParamValue);
             """;
 
-        foreach (var item in request.Items)
+        foreach (var item in effectiveRules)
         {
             var definitionId = await connection.ExecuteScalarAsync<long>(new CommandDefinition(insertDefinitionSql, item, transaction: transaction, cancellationToken: cancellationToken));
 
@@ -66,7 +83,7 @@ public sealed class AlertRuleWriteRepository : IAlertRuleWriteRepository
 
         await transaction.CommitAsync(cancellationToken);
 
-        _configProvider.Update(request.Items.Select(item => new AlertRuleConfig
+        _configProvider.Update(effectiveRules.Select(item => new AlertRuleConfig
         {
             RuleName = item.RuleName,
             Enabled = item.Enabled,

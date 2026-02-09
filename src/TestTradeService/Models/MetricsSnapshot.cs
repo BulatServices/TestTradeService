@@ -34,4 +34,9 @@ public sealed record MetricsSnapshot
     /// Количество тиков в окне.
     /// </summary>
     public required int Count { get; init; }
+
+    /// <summary>
+    /// Средний объем сделки в окне.
+    /// </summary>
+    public required decimal AverageVolume { get; init; }
 }

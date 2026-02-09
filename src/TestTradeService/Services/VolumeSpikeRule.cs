@@ -1,53 +1,61 @@
-using System.Globalization;
+п»їusing System.Globalization;
 using TestTradeService.Interfaces;
 using TestTradeService.Models;
 
 namespace TestTradeService.Services;
 
 /// <summary>
-/// Правило алертинга на резкий всплеск объема.
+/// РџСЂР°РІРёР»Рѕ Р°Р»РµСЂС‚РёРЅРіР° РЅР° СЂРµР·РєРёР№ РІСЃРїР»РµСЃРє РѕР±СЉРµРјР°.
 /// </summary>
 public sealed class VolumeSpikeRule : IAlertRule
 {
     private const decimal DefaultMinVolume = 4m;
     private const int DefaultMinCount = 5;
+    private const decimal DefaultSpikeRatio = 2.0m;
     private readonly IAlertRuleConfigProvider _configProvider;
 
     /// <summary>
-    /// Инициализирует правило контроля всплеска объема.
+    /// РРЅРёС†РёР°Р»РёР·РёСЂСѓРµС‚ РїСЂР°РІРёР»Рѕ РєРѕРЅС‚СЂРѕР»СЏ РІСЃРїР»РµСЃРєР° РѕР±СЉРµРјР°.
     /// </summary>
-    /// <param name="configProvider">Провайдер параметров правил алертинга.</param>
+    /// <param name="configProvider">РџСЂРѕРІР°Р№РґРµСЂ РїР°СЂР°РјРµС‚СЂРѕРІ РїСЂР°РІРёР» Р°Р»РµСЂС‚РёРЅРіР°.</param>
     public VolumeSpikeRule(IAlertRuleConfigProvider configProvider)
     {
         _configProvider = configProvider;
     }
 
     /// <summary>
-    /// Имя правила.
+    /// РРјСЏ РїСЂР°РІРёР»Р°.
     /// </summary>
     public string Name => "VolumeSpike";
 
     /// <summary>
-    /// Проверяет условия всплеска объема.
+    /// РџСЂРѕРІРµСЂСЏРµС‚ СѓСЃР»РѕРІРёСЏ РІСЃРїР»РµСЃРєР° РѕР±СЉРµРјР°.
     /// </summary>
-    /// <param name="tick">Нормализованный тик.</param>
-    /// <param name="metrics">Рассчитанные метрики по инструменту.</param>
-    /// <returns><c>true</c>, если правило сработало.</returns>
+    /// <param name="tick">РќРѕСЂРјР°Р»РёР·РѕРІР°РЅРЅС‹Р№ С‚РёРє.</param>
+    /// <param name="metrics">Р Р°СЃСЃС‡РёС‚Р°РЅРЅС‹Рµ РјРµС‚СЂРёРєРё РїРѕ РёРЅСЃС‚СЂСѓРјРµРЅС‚Сѓ.</param>
+    /// <returns><c>true</c>, РµСЃР»Рё РїСЂР°РІРёР»Рѕ СЃСЂР°Р±РѕС‚Р°Р»Рѕ.</returns>
     public bool IsMatch(NormalizedTick tick, MetricsSnapshot metrics)
     {
         var parameters = _configProvider.GetParameters(Name, tick.Source, tick.Symbol);
         var minVolume = GetDecimal(parameters, "min_volume", DefaultMinVolume);
         var minCount = GetInt(parameters, "min_count", DefaultMinCount);
+        var spikeRatio = GetDecimal(parameters, "volume_spike_ratio", DefaultSpikeRatio);
 
-        return tick.Volume > minVolume && metrics.Count > minCount;
+        if (metrics.AverageVolume <= 0)
+        {
+            return false;
+        }
+
+        var ratio = tick.Volume / metrics.AverageVolume;
+        return tick.Volume > minVolume && metrics.Count > minCount && ratio >= spikeRatio;
     }
 
     /// <summary>
-    /// Формирует алерт по всплеску объема.
+    /// Р¤РѕСЂРјРёСЂСѓРµС‚ Р°Р»РµСЂС‚ РїРѕ РІСЃРїР»РµСЃРєСѓ РѕР±СЉРµРјР°.
     /// </summary>
-    /// <param name="tick">Нормализованный тик.</param>
-    /// <param name="metrics">Рассчитанные метрики.</param>
-    /// <returns>Сформированный алерт.</returns>
+    /// <param name="tick">РќРѕСЂРјР°Р»РёР·РѕРІР°РЅРЅС‹Р№ С‚РёРє.</param>
+    /// <param name="metrics">Р Р°СЃСЃС‡РёС‚Р°РЅРЅС‹Рµ РјРµС‚СЂРёРєРё.</param>
+    /// <returns>РЎС„РѕСЂРјРёСЂРѕРІР°РЅРЅС‹Р№ Р°Р»РµСЂС‚.</returns>
     public Alert CreateAlert(NormalizedTick tick, MetricsSnapshot metrics)
     {
         return new Alert

@@ -21,12 +21,41 @@ import { getAlertRules, getAlerts, putAlertRules } from '../../features/alerts/a
 import { formatDateTime, formatNumber } from '../../shared/lib/format';
 import { AlertRuleConfigDto } from '../../entities/alerts/model/types';
 
+const availableNotifierChannels = ['Console', 'File', 'EmailStub'] as const;
+const channelsParameterKey = 'channels';
+
+function parseChannels(rawValue: string | undefined): string[] {
+  if (!rawValue) {
+    return [];
+  }
+
+  return Array.from(
+    new Set(
+      rawValue
+        .split(',')
+        .map((value) => value.trim())
+        .filter((value) => value.length > 0)
+    )
+  );
+}
+
+function toChannelsCsv(channels: string[]): string {
+  return Array.from(
+    new Set(
+      channels
+        .map((value) => value.trim())
+        .filter((value) => value.length > 0)
+    )
+  ).join(',');
+}
+
 export function MonitoringPage() {
   const queryClient = useQueryClient();
   const [ruleFilter, setRuleFilter] = useState<string>();
   const [sourceFilter, setSourceFilter] = useState<string>();
   const [symbolFilter, setSymbolFilter] = useState<string>();
   const [editingRules, setEditingRules] = useState<AlertRuleConfigDto[]>([]);
+  const [globalChannels, setGlobalChannels] = useState<string[]>([]);
 
   const snapshotQuery = useQuery({
     queryKey: ['monitoring-snapshot'],
@@ -52,11 +81,12 @@ export function MonitoringPage() {
   useEffect(() => {
     if (rulesQuery.data) {
       setEditingRules(rulesQuery.data.items);
+      setGlobalChannels(rulesQuery.data.globalChannels);
     }
   }, [rulesQuery.data]);
 
   const saveRulesMutation = useMutation({
-    mutationFn: () => putAlertRules({ items: editingRules }),
+    mutationFn: () => putAlertRules({ items: editingRules, globalChannels }),
     onSuccess: async () => {
       message.success('Правила алертинга сохранены');
       await queryClient.invalidateQueries({ queryKey: ['alert-rules'] });
@@ -192,6 +222,17 @@ export function MonitoringPage() {
 
       <Card title="Управление правилами алертинга" className="section-card" loading={rulesQuery.isLoading}>
         <Form layout="vertical">
+          <Form.Item label="Глобальные каналы уведомлений">
+            <Select
+              mode="multiple"
+              value={globalChannels}
+              onChange={setGlobalChannels}
+              options={availableNotifierChannels.map((channel) => ({ value: channel, label: channel }))}
+              placeholder="Выберите каналы по умолчанию"
+              style={{ width: 360, maxWidth: '100%' }}
+            />
+          </Form.Item>
+
           <Table
             rowKey={(row) => row.ruleName}
             dataSource={editingRules}
@@ -220,11 +261,42 @@ export function MonitoringPage() {
                 )
               },
               {
+                title: 'Каналы',
+                dataIndex: 'parameters',
+                render: (value, row) => (
+                  <Select
+                    mode="multiple"
+                    value={parseChannels(String(value[channelsParameterKey] ?? ''))}
+                    onChange={(channels) => {
+                      const nextCsv = toChannelsCsv(channels);
+                      setEditingRules((prev) =>
+                        prev.map((rule) =>
+                          rule.ruleName === row.ruleName
+                            ? {
+                                ...rule,
+                                parameters: {
+                                  ...rule.parameters,
+                                  [channelsParameterKey]: nextCsv
+                                }
+                              }
+                            : rule
+                        )
+                      );
+                    }}
+                    options={availableNotifierChannels.map((channel) => ({ value: channel, label: channel }))}
+                    placeholder="Наследовать глобальные"
+                    style={{ width: 280, maxWidth: '100%' }}
+                  />
+                )
+              },
+              {
                 title: 'Параметры',
                 dataIndex: 'parameters',
                 render: (value, row) => (
                   <Space direction="vertical" style={{ width: '100%' }}>
-                    {Object.entries(value).map(([key, paramValue]) => (
+                    {Object.entries(value)
+                      .filter(([key]) => key !== channelsParameterKey)
+                      .map(([key, paramValue]) => (
                       <Input
                         key={`${row.ruleName}-${key}`}
                         addonBefore={key}

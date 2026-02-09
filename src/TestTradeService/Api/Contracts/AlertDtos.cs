@@ -113,6 +113,11 @@ public sealed record AlertRulesResponseDto
     /// Список правил.
     /// </summary>
     public required IReadOnlyCollection<AlertRuleConfigDto> Items { get; init; }
+
+    /// <summary>
+    /// Глобальный список каналов уведомлений по умолчанию.
+    /// </summary>
+    public required IReadOnlyCollection<string> GlobalChannels { get; init; }
 }
 
 /// <summary>
@@ -124,4 +129,9 @@ public sealed record PutAlertRulesRequest
     /// Новый список правил.
     /// </summary>
     public required IReadOnlyCollection<AlertRuleConfigDto> Items { get; init; }
+
+    /// <summary>
+    /// Глобальный список каналов уведомлений по умолчанию.
+    /// </summary>
+    public required IReadOnlyCollection<string> GlobalChannels { get; init; }
 }

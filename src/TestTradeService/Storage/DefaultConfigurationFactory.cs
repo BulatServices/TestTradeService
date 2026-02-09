@@ -75,7 +75,19 @@ public static class DefaultConfigurationFactory
                 Parameters = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
                 {
                     ["min_volume"] = "4",
-                    ["min_count"] = "5"
+                    ["min_count"] = "5",
+                    ["volume_spike_ratio"] = "2.0"
+                }
+            },
+            new AlertRuleConfig
+            {
+                RuleName = AlertingChannels.GlobalRuleName,
+                Enabled = true,
+                Exchange = null,
+                Symbol = null,
+                Parameters = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    [AlertingChannels.ChannelsParameterKey] = AlertingChannels.ToCsv(AlertingChannels.Default())
                 }
             }
         ];

@@ -43,7 +43,8 @@ set
 insert into meta.alert_rule_definitions(rule_name, exchange, symbol, is_enabled, updated_at)
 values
     ('PriceThreshold', null, null, true, now()),
-    ('VolumeSpike', null, null, true, now())
+    ('VolumeSpike', null, null, true, now()),
+    ('__AlertingGlobal__', null, null, true, now())
 on conflict do nothing;
 
 insert into meta.alert_rule_parameters(rule_definition_id, param_key, param_value, updated_at)
@@ -55,7 +56,9 @@ join
         ('PriceThreshold', 'min_price', '18000'),
         ('PriceThreshold', 'max_price', '22000'),
         ('VolumeSpike', 'min_volume', '4'),
-        ('VolumeSpike', 'min_count', '5')
+        ('VolumeSpike', 'min_count', '5'),
+        ('VolumeSpike', 'volume_spike_ratio', '2.0'),
+        ('__AlertingGlobal__', 'channels', 'Console,File,EmailStub')
 ) as p(rule_name, param_key, param_value)
     on p.rule_name = d.rule_name
 where d.exchange is null and d.symbol is null
