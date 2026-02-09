@@ -3,7 +3,6 @@ import { Card, DatePicker, Select, Space, Table, Tabs, Typography } from 'antd';
 import { useQuery } from '@tanstack/react-query';
 import { getCandles, getMetrics } from '../../features/processed/api/processedApi';
 import { formatDateTime, formatNumber } from '../../shared/lib/format';
-import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
 const { RangePicker } = DatePicker;
 
@@ -32,15 +31,59 @@ export function ProcessedPage() {
     queryFn: () => getMetrics(commonParams)
   });
 
-  const chartData = useMemo(
-    () =>
-      (candlesQuery.data?.items ?? []).map((item) => ({
-        time: new Date(item.windowStart).toLocaleTimeString('ru-RU'),
-        close: item.close,
-        volume: item.volume
-      })),
-    [candlesQuery.data]
-  );
+  const candleChart = useMemo(() => {
+    const items = candlesQuery.data?.items ?? [];
+    if (!items.length) {
+      return {
+        max: 0,
+        min: 0,
+        candles: [] as Array<{
+          key: string;
+          time: string;
+          highTop: number;
+          wickHeight: number;
+          bodyTop: number;
+          bodyHeight: number;
+          rising: boolean;
+          open: number;
+          high: number;
+          low: number;
+          close: number;
+        }>
+      };
+    }
+
+    const max = Math.max(...items.map((item) => item.high));
+    const min = Math.min(...items.map((item) => item.low));
+    const span = Math.max(max - min, Number.EPSILON);
+
+    const toPercentFromTop = (price: number) => ((max - price) / span) * 100;
+
+    return {
+      max,
+      min,
+      candles: items.map((item) => {
+        const highTop = toPercentFromTop(item.high);
+        const lowTop = toPercentFromTop(item.low);
+        const openTop = toPercentFromTop(item.open);
+        const closeTop = toPercentFromTop(item.close);
+
+        return {
+          key: `${item.symbol}-${item.windowStart}`,
+          time: new Date(item.windowStart).toLocaleTimeString('ru-RU'),
+          highTop,
+          wickHeight: Math.max(lowTop - highTop, 1),
+          bodyTop: Math.min(openTop, closeTop),
+          bodyHeight: Math.max(Math.abs(openTop - closeTop), 1),
+          rising: item.close >= item.open,
+          open: item.open,
+          high: item.high,
+          low: item.low,
+          close: item.close
+        };
+      })
+    };
+  }, [candlesQuery.data]);
 
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
@@ -128,17 +171,71 @@ export function ProcessedPage() {
                     { title: 'Количество тиков', dataIndex: 'count' }
                   ]}
                 />
-                <div style={{ width: '100%', height: 280, marginTop: 16 }}>
-                  <ResponsiveContainer>
-                    <LineChart data={chartData}>
-                      <XAxis dataKey="time" />
-                      <YAxis yAxisId="close" orientation="left" />
-                      <YAxis yAxisId="volume" orientation="right" />
-                      <Tooltip />
-                      <Line yAxisId="close" dataKey="close" stroke="#fa8c16" dot={false} name="Цена" />
-                      <Line yAxisId="volume" dataKey="volume" stroke="#13c2c2" dot={false} name="Объём" />
-                    </LineChart>
-                  </ResponsiveContainer>
+                <div style={{ width: '100%', marginTop: 16 }}>
+                  {candleChart.candles.length ? (
+                    <div style={{ border: '1px solid #f0f0f0', borderRadius: 8, padding: 12 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, fontSize: 12, color: '#595959' }}>
+                        <span>max: {formatNumber(candleChart.max, 4)}</span>
+                        <span>min: {formatNumber(candleChart.min, 4)}</span>
+                      </div>
+                      <div
+                        style={{
+                          display: 'flex',
+                          gap: 6,
+                          height: 220,
+                          minWidth: 420,
+                          overflowX: 'auto',
+                          alignItems: 'stretch'
+                        }}
+                      >
+                        {candleChart.candles.map((item) => {
+                          const color = item.rising ? '#52c41a' : '#ff4d4f';
+                          return (
+                            <div key={item.key} style={{ flex: 1, minWidth: 16, position: 'relative' }} title={`O: ${formatNumber(item.open, 4)} H: ${formatNumber(item.high, 4)} L: ${formatNumber(item.low, 4)} C: ${formatNumber(item.close, 4)}`}>
+                              <div
+                                style={{
+                                  position: 'absolute',
+                                  left: '50%',
+                                  marginLeft: -1,
+                                  width: 2,
+                                  top: `${item.highTop}%`,
+                                  height: `${item.wickHeight}%`,
+                                  backgroundColor: color
+                                }}
+                              />
+                              <div
+                                style={{
+                                  position: 'absolute',
+                                  left: '50%',
+                                  marginLeft: -5,
+                                  width: 10,
+                                  top: `${item.bodyTop}%`,
+                                  height: `${item.bodyHeight}%`,
+                                  backgroundColor: color,
+                                  borderRadius: 2
+                                }}
+                              />
+                              <div
+                                style={{
+                                  position: 'absolute',
+                                  bottom: -20,
+                                  left: '50%',
+                                  transform: 'translateX(-50%)',
+                                  fontSize: 11,
+                                  color: '#8c8c8c',
+                                  whiteSpace: 'nowrap'
+                                }}
+                              >
+                                {item.time}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : (
+                    <Typography.Text type="secondary">Недостаточно данных для построения свечного графика.</Typography.Text>
+                  )}
                 </div>
               </Card>
             )

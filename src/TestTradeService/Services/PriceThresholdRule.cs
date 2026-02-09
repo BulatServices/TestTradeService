@@ -56,7 +56,7 @@ public sealed class PriceThresholdRule : IAlertRule
             Rule = Name,
             Source = tick.Source,
             Symbol = tick.Symbol,
-            Message = $"Price threshold breached: {tick.Price}",
+            Message = $"Price threshold breached for {tick.Source}/{tick.Symbol}: {tick.Price}",
             Timestamp = tick.Timestamp
         };
     }

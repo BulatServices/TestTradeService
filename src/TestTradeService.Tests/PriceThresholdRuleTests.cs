@@ -46,6 +46,8 @@ public sealed class PriceThresholdRuleTests
         Assert.Equal(tick.Symbol, alert.Symbol);
         Assert.Equal(tick.Timestamp, alert.Timestamp);
         Assert.Contains("Price threshold", alert.Message);
+        Assert.Contains(tick.Source, alert.Message);
+        Assert.Contains(tick.Symbol, alert.Message);
     }
 
     /// <summary>

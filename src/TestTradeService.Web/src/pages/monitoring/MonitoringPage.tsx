@@ -20,7 +20,7 @@ import { getMonitoringSnapshot } from '../../features/monitoring/api/monitoringA
 import { getAlertRules, getAlerts, putAlertRules } from '../../features/alerts/api/alertsApi';
 import { getSourceConfig } from '../../features/config/api/configApi';
 import { formatDateTime, formatNumber } from '../../shared/lib/format';
-import { AlertRuleConfigDto } from '../../entities/alerts/model/types';
+import { AlertDto, AlertRuleConfigDto } from '../../entities/alerts/model/types';
 import { SourceConfigDto } from '../../entities/config/model/types';
 import { SourceStatsDto } from '../../entities/monitoring/model/types';
 
@@ -41,6 +41,25 @@ const priceThresholdRuleName = 'PriceThreshold';
 
 function buildRuleScopeKey(rule: Pick<AlertRuleConfigDto, 'ruleName' | 'exchange' | 'symbol'>): string {
   return `${rule.ruleName}::${rule.exchange ?? '*'}::${rule.symbol ?? '*'}`;
+}
+
+function formatRuleDisplay(
+  ruleName: string,
+  scope: { exchange?: string | null; symbol?: string | null }
+): string {
+  if (ruleName !== priceThresholdRuleName) {
+    return ruleName;
+  }
+
+  if (scope.exchange && scope.symbol) {
+    return `${ruleName} (${scope.exchange}/${scope.symbol})`;
+  }
+
+  if (scope.symbol) {
+    return `${ruleName} (${scope.symbol})`;
+  }
+
+  return ruleName;
 }
 
 function getAvailableScopes(config: SourceConfigDto | undefined): Array<{ exchange: string; symbol: string }> {
@@ -328,7 +347,11 @@ export function MonitoringPage() {
           dataSource={alertsQuery.data?.items ?? []}
           pagination={{ pageSize: 10 }}
           columns={[
-            { title: 'Правило', dataIndex: 'rule' },
+            {
+              title: 'Правило',
+              dataIndex: 'rule',
+              render: (value: AlertDto['rule'], row: AlertDto) => formatRuleDisplay(value, { symbol: row.symbol })
+            },
             { title: 'Источник', dataIndex: 'source' },
             { title: 'Тикер', dataIndex: 'symbol' },
             { title: 'Сообщение', dataIndex: 'message' },
@@ -355,7 +378,11 @@ export function MonitoringPage() {
             dataSource={editingRules}
             pagination={false}
             columns={[
-              { title: 'Правило', dataIndex: 'ruleName' },
+              {
+                title: 'Правило',
+                dataIndex: 'ruleName',
+                render: (value, row) => formatRuleDisplay(value, { exchange: row.exchange, symbol: row.symbol })
+              },
               { title: 'Биржа', dataIndex: 'exchange', render: (value) => value ?? '-' },
               { title: 'Тикер', dataIndex: 'symbol', render: (value) => value ?? '-' },
               {
