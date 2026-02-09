@@ -1,25 +1,24 @@
-using TestTradeService.Ingestion.Configuration;
+п»їusing TestTradeService.Ingestion.Configuration;
 using TestTradeService.Models;
 
 namespace TestTradeService.Interfaces;
 
 /// <summary>
-/// Репозиторий чтения конфигурации торговой системы из хранилища метаданных.
+/// Р РµРїРѕР·РёС‚РѕСЂРёР№ С‡С‚РµРЅРёСЏ РєРѕРЅС„РёРіСѓСЂР°С†РёРё С‚РѕСЂРіРѕРІРѕР№ СЃРёСЃС‚РµРјС‹ РёР· С…СЂР°РЅРёР»РёС‰Р° РјРµС‚Р°РґР°РЅРЅС‹С….
 /// </summary>
 public interface IConfigurationRepository
 {
     /// <summary>
-    /// Загружает конфигурацию инструментов по биржам и типам рынков.
+    /// Р—Р°РіСЂСѓР¶Р°РµС‚ РєРѕРЅС„РёРіСѓСЂР°С†РёСЋ РёРЅСЃС‚СЂСѓРјРµРЅС‚РѕРІ РїРѕ Р±РёСЂР¶Р°Рј Рё С‚РёРїР°Рј СЂС‹РЅРєРѕРІ.
     /// </summary>
-    /// <param name="demoMode">Признак демо-режима (загружать только demo-профили).</param>
-    /// <param name="cancellationToken">Токен отмены.</param>
-    /// <returns>Конфигурация инструментов для подсистем ingestion и фильтрации.</returns>
-    Task<MarketInstrumentsConfig> GetMarketInstrumentsConfigAsync(bool demoMode, CancellationToken cancellationToken);
+    /// <param name="cancellationToken">РўРѕРєРµРЅ РѕС‚РјРµРЅС‹.</param>
+    /// <returns>РљРѕРЅС„РёРіСѓСЂР°С†РёСЏ РёРЅСЃС‚СЂСѓРјРµРЅС‚РѕРІ РґР»СЏ РїРѕРґСЃРёСЃС‚РµРј ingestion Рё С„РёР»СЊС‚СЂР°С†РёРё.</returns>
+    Task<MarketInstrumentsConfig> GetMarketInstrumentsConfigAsync(CancellationToken cancellationToken);
 
     /// <summary>
-    /// Загружает конфигурацию правил алертинга с параметрами.
+    /// Р—Р°РіСЂСѓР¶Р°РµС‚ РєРѕРЅС„РёРіСѓСЂР°С†РёСЋ РїСЂР°РІРёР» Р°Р»РµСЂС‚РёРЅРіР° СЃ РїР°СЂР°РјРµС‚СЂР°РјРё.
     /// </summary>
-    /// <param name="cancellationToken">Токен отмены.</param>
-    /// <returns>Набор конфигураций правил.</returns>
+    /// <param name="cancellationToken">РўРѕРєРµРЅ РѕС‚РјРµРЅС‹.</param>
+    /// <returns>РќР°Р±РѕСЂ РєРѕРЅС„РёРіСѓСЂР°С†РёР№ РїСЂР°РІРёР».</returns>
     Task<IReadOnlyCollection<AlertRuleConfig>> GetAlertRulesAsync(CancellationToken cancellationToken);
 }

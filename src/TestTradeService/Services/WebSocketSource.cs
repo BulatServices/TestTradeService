@@ -10,135 +10,7 @@ using TestTradeService.Models;
 namespace TestTradeService.Services;
 
 /// <summary>
-/// РСЃС‚РѕС‡РЅРёРє СЂС‹РЅРѕС‡РЅС‹С… РґР°РЅРЅС‹С… С‡РµСЂРµР· WebSocket-РїРѕС‚РѕРє.
-/// </summary>
-public sealed class LegacyWebSocketSource : IMarketDataSource
-{
-    private readonly ILogger<LegacyWebSocketSource> _logger;
-    private readonly MarketInstrumentsConfig _instrumentsConfig;
-    private readonly IStorage _storage;
-
-    /// <summary>
-    /// РРЅРёС†РёР°Р»РёР·РёСЂСѓРµС‚ РёСЃС‚РѕС‡РЅРёРє WebSocket.
-    /// </summary>
-    /// <param name="logger">Р›РѕРіРіРµСЂ РёСЃС‚РѕС‡РЅРёРєР°.</param>
-    /// <param name="instrumentsConfig">РљРѕРЅС„РёРіСѓСЂР°С†РёСЏ РёРЅСЃС‚СЂСѓРјРµРЅС‚РѕРІ.</param>
-    /// <param name="storage">РЎР»РѕР№ С…СЂР°РЅРµРЅРёСЏ.</param>
-    public LegacyWebSocketSource(ILogger<LegacyWebSocketSource> logger, MarketInstrumentsConfig instrumentsConfig, IStorage storage)
-    {
-        _logger = logger;
-        _instrumentsConfig = instrumentsConfig;
-        _storage = storage;
-    }
-
-    /// <summary>
-    /// РРјСЏ РёСЃС‚РѕС‡РЅРёРєР°.
-    /// </summary>
-    public string Name => "Legacy-WebSocket";
-
-    /// <summary>
-    /// Р‘РёСЂР¶Р° (С‚РѕСЂРіРѕРІР°СЏ РїР»РѕС‰Р°РґРєР°), Рє РєРѕС‚РѕСЂРѕР№ РѕС‚РЅРѕСЃРёС‚СЃСЏ РёСЃС‚РѕС‡РЅРёРє.
-    /// </summary>
-    public MarketExchange Exchange => MarketExchange.Demo;
-
-    /// <summary>
-    /// РўСЂР°РЅСЃРїРѕСЂС‚/С‚РёРї РїРѕРґРєР»СЋС‡РµРЅРёСЏ РёСЃС‚РѕС‡РЅРёРєР°.
-    /// </summary>
-    public MarketDataSourceTransport Transport => MarketDataSourceTransport.WebSocket;
-
-    /// <summary>
-    /// Р—Р°РїСѓСЃРєР°РµС‚ РїРѕС‚РѕРєРѕРІСѓСЋ РїСѓР±Р»РёРєР°С†РёСЋ С‚РёРєРѕРІ РІ РєР°РЅР°Р».
-    /// </summary>
-    /// <param name="writer">РљР°РЅР°Р» РґР»СЏ РїСѓР±Р»РёРєР°С†РёРё С‚РёРєРѕРІ.</param>
-    /// <param name="cancellationToken">РўРѕРєРµРЅ РѕС‚РјРµРЅС‹.</param>
-    /// <returns>Р—Р°РґР°С‡Р° РІС‹РїРѕР»РЅРµРЅРёСЏ РїРѕС‚РѕРєРѕРІРѕР№ РїСѓР±Р»РёРєР°С†РёРё.</returns>
-    public async Task StartAsync(ChannelWriter<Tick> writer, CancellationToken cancellationToken)
-    {
-        var profile = _instrumentsConfig.GetProfile(MarketExchange.Demo, MarketType.Perp, MarketDataSourceTransport.WebSocket);
-        if (profile is null)
-        {
-            _logger.LogWarning("РќРµ РЅР°СЃС‚СЂРѕРµРЅС‹ РёРЅСЃС‚СЂСѓРјРµРЅС‚С‹ РґР»СЏ СЂС‹РЅРєР° perp. WebSocket-РїРѕС‚РѕРє РѕСЃС‚Р°РЅРѕРІР»РµРЅ.");
-            return;
-        }
-
-        var symbols = profile.Symbols?.ToArray() ?? Array.Empty<string>();
-        if (symbols.Length == 0)
-        {
-            _logger.LogWarning("РџСЂРѕС„РёР»СЊ perp РЅРµ СЃРѕРґРµСЂР¶РёС‚ СЃРёРјРІРѕР»РѕРІ. WebSocket-РїРѕС‚РѕРє РѕСЃС‚Р°РЅРѕРІР»РµРЅ.");
-            return;
-        }
-        var tickInterval = profile.TargetUpdateInterval;
-        var random = Random.Shared;
-
-        await StoreInstrumentMetadataAsync(profile, cancellationToken);
-
-        _logger.LogInformation("WebSocket source started");
-
-        while (!cancellationToken.IsCancellationRequested)
-        {
-            var now = DateTimeOffset.UtcNow;
-            var symbol = symbols[random.Next(symbols.Length)];
-            var tick = new Tick
-            {
-                Source = Name,
-                Symbol = symbol,
-                Price = 20_000m + (decimal)random.NextDouble() * 2_500m,
-                Volume = 0.05m + (decimal)random.NextDouble() * 3m,
-                Timestamp = now,
-                TradeId = $"ws-{now:O}-{random.Next(1_000_000)}"
-            };
-
-            await writer.WriteAsync(tick, cancellationToken);
-            await Task.Delay(tickInterval, cancellationToken);
-        }
-
-    }
-
-    /// <summary>
-    /// Р—Р°РїСЂР°С€РёРІР°РµС‚ РєРѕСЂСЂРµРєС‚РЅСѓСЋ РѕСЃС‚Р°РЅРѕРІРєСѓ РёСЃС‚РѕС‡РЅРёРєР°.
-    /// Р”Р»СЏ WebSocket-СЂРµР°Р»РёР·Р°С†РёРё Р·РґРµСЃСЊ РѕР±С‹С‡РЅРѕ Р·Р°РєСЂС‹РІР°СЋС‚СЃСЏ СЃРѕРµРґРёРЅРµРЅРёСЏ Рё РІС‹РїРѕР»РЅСЏРµС‚СЃСЏ РѕС‚РїРёСЃРєР°.
-    /// </summary>
-    /// <param name="cancellationToken">РўРѕРєРµРЅ РѕС‚РјРµРЅС‹.</param>
-    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
-
-    private async Task StoreInstrumentMetadataAsync(MarketInstrumentProfile profile, CancellationToken cancellationToken)
-    {
-        foreach (var symbol in profile.Symbols)
-        {
-            var (baseAsset, quoteAsset) = ParseSymbol(symbol);
-            await _storage.StoreInstrumentAsync(new InstrumentMetadata
-            {
-                Exchange = Exchange.ToString(),
-                MarketType = profile.MarketType,
-                Symbol = symbol,
-                BaseAsset = baseAsset,
-                QuoteAsset = quoteAsset,
-                Description = $"{symbol} ({profile.MarketType})",
-                PriceTickSize = 0.1m,
-                VolumeStep = 0.001m,
-                PriceDecimals = 1,
-                VolumeDecimals = 3,
-                ContractSize = 1m,
-                MinNotional = 10m
-            }, cancellationToken);
-        }
-    }
-
-    private static (string BaseAsset, string QuoteAsset) ParseSymbol(string symbol)
-    {
-        var parts = symbol
-            .Split(new[] { '-', '/', '_' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-
-        return parts.Length switch
-        {
-            2 => (parts[0], parts[1]),
-            _ => (symbol, "UNKNOWN")
-        };
-    }
-}
-
-/// <summary>
-/// Р‘Р°Р·РѕРІС‹Р№ РёСЃС‚РѕС‡РЅРёРє СЂС‹РЅРѕС‡РЅС‹С… РґР°РЅРЅС‹С… С‡РµСЂРµР· WebSocket-РїРѕС‚РѕРє СЃРґРµР»РѕРє.
+/// Базовый источник рыночных данных через WebSocket-поток сделок.
 /// </summary>
 public abstract class WebSocketSource : IMarketDataSource
 {
@@ -148,13 +20,13 @@ public abstract class WebSocketSource : IMarketDataSource
     private readonly TradeCursorStore _tradeCursorStore;
 
     /// <summary>
-    /// РРЅРёС†РёР°Р»РёР·РёСЂСѓРµС‚ Р±Р°Р·РѕРІС‹Р№ WebSocket-РёСЃС‚РѕС‡РЅРёРє.
+    /// Инициализирует базовый WebSocket-источник.
     /// </summary>
-    /// <param name="logger">Р›РѕРіРіРµСЂ РёСЃС‚РѕС‡РЅРёРєР°.</param>
-    /// <param name="instrumentsConfig">РљРѕРЅС„РёРіСѓСЂР°С†РёСЏ РёРЅСЃС‚СЂСѓРјРµРЅС‚РѕРІ.</param>
-    /// <param name="storage">РЎР»РѕР№ С…СЂР°РЅРµРЅРёСЏ.</param>
-    /// <param name="tradeCursorStore">РљСѓСЂСЃРѕСЂ СЃРґРµР»РѕРє РґР»СЏ РґРµРґСѓРїР»РёРєР°С†РёРё.</param>
-    /// <param name="exchange">Р‘РёСЂР¶Р°, Рє РєРѕС‚РѕСЂРѕР№ РѕС‚РЅРѕСЃРёС‚СЃСЏ РёСЃС‚РѕС‡РЅРёРє.</param>
+    /// <param name="logger">Логгер источника.</param>
+    /// <param name="instrumentsConfig">Конфигурация инструментов.</param>
+    /// <param name="storage">Слой хранения.</param>
+    /// <param name="tradeCursorStore">Курсор сделок для дедупликации.</param>
+    /// <param name="exchange">Биржа, к которой относится источник.</param>
     protected WebSocketSource(
         ILogger logger,
         MarketInstrumentsConfig instrumentsConfig,
@@ -170,39 +42,39 @@ public abstract class WebSocketSource : IMarketDataSource
     }
 
     /// <summary>
-    /// РРјСЏ РёСЃС‚РѕС‡РЅРёРєР°.
+    /// Имя источника.
     /// </summary>
     public string Name => $"{Exchange}-WebSocket";
 
     /// <summary>
-    /// Р‘РёСЂР¶Р° (С‚РѕСЂРіРѕРІР°СЏ РїР»РѕС‰Р°РґРєР°), Рє РєРѕС‚РѕСЂРѕР№ РѕС‚РЅРѕСЃРёС‚СЃСЏ РёСЃС‚РѕС‡РЅРёРє.
+    /// Биржа (торговая площадка), к которой относится источник.
     /// </summary>
     public MarketExchange Exchange { get; }
 
     /// <summary>
-    /// РўСЂР°РЅСЃРїРѕСЂС‚/С‚РёРї РїРѕРґРєР»СЋС‡РµРЅРёСЏ РёСЃС‚РѕС‡РЅРёРєР°.
+    /// Транспорт/тип подключения источника.
     /// </summary>
     public MarketDataSourceTransport Transport => MarketDataSourceTransport.WebSocket;
 
     /// <summary>
-    /// Р—Р°РїСѓСЃРєР°РµС‚ WebSocket-РёСЃС‚РѕС‡РЅРёРє Рё РїСѓР±Р»РёРєСѓРµС‚ С‚РёРєРё СЃРґРµР»РѕРє РІ РєР°РЅР°Р».
+    /// Запускает WebSocket-источник и публикует тики сделок в канал.
     /// </summary>
-    /// <param name="writer">РљР°РЅР°Р» РґР»СЏ РїСѓР±Р»РёРєР°С†РёРё С‚РёРєРѕРІ.</param>
-    /// <param name="cancellationToken">РўРѕРєРµРЅ РѕС‚РјРµРЅС‹.</param>
-    /// <returns>Р—Р°РґР°С‡Р° РІС‹РїРѕР»РЅРµРЅРёСЏ РёСЃС‚РѕС‡РЅРёРєР°.</returns>
+    /// <param name="writer">Канал для публикации тиков.</param>
+    /// <param name="cancellationToken">Токен отмены.</param>
+    /// <returns>Задача выполнения источника.</returns>
     public async Task StartAsync(ChannelWriter<Tick> writer, CancellationToken cancellationToken)
     {
         var profile = _instrumentsConfig.GetProfile(Exchange, MarketType.Spot, MarketDataSourceTransport.WebSocket);
         if (profile is null)
         {
-            _logger.LogWarning("РќРµ РЅР°СЃС‚СЂРѕРµРЅС‹ РёРЅСЃС‚СЂСѓРјРµРЅС‚С‹ РґР»СЏ {Exchange} spot. WebSocket-РёСЃС‚РѕС‡РЅРёРє РѕСЃС‚Р°РЅРѕРІР»РµРЅ.", Exchange);
+            _logger.LogWarning("Не настроены инструменты для {Exchange} spot. WebSocket-источник остановлен.", Exchange);
             return;
         }
 
         var symbols = profile.Symbols?.ToArray() ?? Array.Empty<string>();
         if (symbols.Length == 0)
         {
-            _logger.LogWarning("РџСЂРѕС„РёР»СЊ {Exchange} spot РЅРµ СЃРѕРґРµСЂР¶РёС‚ СЃРёРјРІРѕР»РѕРІ. WebSocket-РёСЃС‚РѕС‡РЅРёРє РѕСЃС‚Р°РЅРѕРІР»РµРЅ.", Exchange);
+            _logger.LogWarning("Профиль {Exchange} spot не содержит символов. WebSocket-источник остановлен.", Exchange);
             return;
         }
 
@@ -239,33 +111,33 @@ public abstract class WebSocketSource : IMarketDataSource
     }
 
     /// <summary>
-    /// Р—Р°РїСЂР°С€РёРІР°РµС‚ РєРѕСЂСЂРµРєС‚РЅСѓСЋ РѕСЃС‚Р°РЅРѕРІРєСѓ РёСЃС‚РѕС‡РЅРёРєР°.
+    /// Запрашивает корректную остановку источника.
     /// </summary>
-    /// <param name="cancellationToken">РўРѕРєРµРЅ РѕС‚РјРµРЅС‹.</param>
+    /// <param name="cancellationToken">Токен отмены.</param>
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
     /// <summary>
-    /// Р’РѕР·РІСЂР°С‰Р°РµС‚ WebSocket endpoint РґР»СЏ РїРѕРґРєР»СЋС‡РµРЅРёСЏ.
+    /// Возвращает WebSocket endpoint для подключения.
     /// </summary>
     protected abstract Uri BuildEndpoint();
 
     /// <summary>
-    /// РћС‚РїСЂР°РІР»СЏРµС‚ СЃРѕРѕР±С‰РµРЅРёРµ РїРѕРґРїРёСЃРєРё РЅР° СѓРєР°Р·Р°РЅРЅС‹Рµ СЃРёРјРІРѕР»С‹.
+    /// Отправляет сообщение подписки на указанные символы.
     /// </summary>
     protected abstract Task SendSubscribeAsync(ClientWebSocket socket, IReadOnlyCollection<string> symbols, CancellationToken ct);
 
     /// <summary>
-    /// РћС‚РїСЂР°РІР»СЏРµС‚ СЃРѕРѕР±С‰РµРЅРёРµ РѕС‚РїРёСЃРєРё РѕС‚ СѓРєР°Р·Р°РЅРЅС‹С… СЃРёРјРІРѕР»РѕРІ.
+    /// Отправляет сообщение отписки от указанных символов.
     /// </summary>
     protected abstract Task SendUnsubscribeAsync(ClientWebSocket socket, IReadOnlyCollection<string> symbols, CancellationToken ct);
 
     /// <summary>
-    /// РџР°СЂСЃРёС‚ payload WebSocket-СЃРѕРѕР±С‰РµРЅРёСЏ Рё РІРѕР·РІСЂР°С‰Р°РµС‚ 0..N С‚РёРєРѕРІ СЃРґРµР»РѕРє.
+    /// Парсит payload WebSocket-сообщения и возвращает 0..N тиков сделок.
     /// </summary>
     protected abstract IReadOnlyCollection<Tick> ParseTrades(string payload, DateTimeOffset receivedAt);
 
     /// <summary>
-    /// Р—Р°РґРµСЂР¶РєР° РїРµСЂРµРґ РїРµСЂРµРїРѕРґРєР»СЋС‡РµРЅРёРµРј РїСЂРё РѕС€РёР±РєРµ.
+    /// Задержка перед переподключением при ошибке.
     /// </summary>
     protected virtual TimeSpan ReconnectDelay => TimeSpan.FromSeconds(2);
 
@@ -367,4 +239,3 @@ public abstract class WebSocketSource : IMarketDataSource
         };
     }
 }
-

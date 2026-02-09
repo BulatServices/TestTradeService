@@ -1,4 +1,4 @@
-insert into meta.instruments
+﻿insert into meta.instruments
 (
     exchange,
     market_type,
@@ -24,13 +24,7 @@ values
 ('Coinbase', 'Spot', 'SOL-USD', 'SOL', 'USD', 'SOL-USD Spot', 0.01, 0.0001, 2, 4, null, 10, 2000, true, now()),
 ('Bybit', 'Spot', 'BTCUSDT', 'BTC', 'USDT', 'BTCUSDT Spot', 0.01, 0.0001, 2, 4, null, 10, 2000, true, now()),
 ('Bybit', 'Spot', 'ETHUSDT', 'ETH', 'USDT', 'ETHUSDT Spot', 0.01, 0.0001, 2, 4, null, 10, 2000, true, now()),
-('Bybit', 'Spot', 'SOLUSDT', 'SOL', 'USDT', 'SOLUSDT Spot', 0.01, 0.0001, 2, 4, null, 10, 2000, true, now()),
-('Demo', 'Spot', 'BTC-USD', 'BTC', 'USD', 'BTC-USD Spot Demo', 0.01, 0.0001, 2, 4, null, 10, 2000, true, now()),
-('Demo', 'Spot', 'ETH-USD', 'ETH', 'USD', 'ETH-USD Spot Demo', 0.01, 0.0001, 2, 4, null, 10, 2000, true, now()),
-('Demo', 'Spot', 'SOL-USD', 'SOL', 'USD', 'SOL-USD Spot Demo', 0.01, 0.0001, 2, 4, null, 10, 2000, true, now()),
-('Demo', 'Perp', 'BTC-USD', 'BTC', 'USD', 'BTC-USD Perp Demo', 0.1, 0.001, 1, 3, 1, 10, 100, true, now()),
-('Demo', 'Perp', 'ETH-USD', 'ETH', 'USD', 'ETH-USD Perp Demo', 0.1, 0.001, 1, 3, 1, 10, 100, true, now()),
-('Demo', 'Perp', 'XRP-USD', 'XRP', 'USD', 'XRP-USD Perp Demo', 0.1, 0.001, 1, 3, 1, 10, 100, true, now())
+('Bybit', 'Spot', 'SOLUSDT', 'SOL', 'USDT', 'SOLUSDT Spot', 0.01, 0.0001, 2, 4, null, 10, 2000, true, now())
 on conflict (exchange, market_type, symbol) do update
 set
     base_asset = excluded.base_asset,

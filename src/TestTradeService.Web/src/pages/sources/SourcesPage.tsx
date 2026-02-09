@@ -17,7 +17,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { getSourceConfig, putSourceConfig } from '../../features/config/api/configApi';
 import { MarketInstrumentProfileDto, SourceConfigDto } from '../../entities/config/model/types';
 
-const exchangeOptions = ['Demo', 'Kraken', 'Coinbase', 'Bybit'];
+const exchangeOptions = ['Kraken', 'Coinbase', 'Bybit'];
 const marketTypeOptions = ['Spot', 'Perp'];
 const transportOptions = ['WebSocket', 'Rest'];
 

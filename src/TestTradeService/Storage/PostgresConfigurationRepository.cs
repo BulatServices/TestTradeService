@@ -24,10 +24,9 @@ public sealed class PostgresConfigurationRepository : IConfigurationRepository
     /// <summary>
     /// Загружает конфигурацию инструментов по биржам и типам рынков.
     /// </summary>
-    /// <param name="demoMode">Признак демо-режима (загружать только demo-профили).</param>
     /// <param name="cancellationToken">Токен отмены.</param>
     /// <returns>Конфигурация инструментов.</returns>
-    public async Task<MarketInstrumentsConfig> GetMarketInstrumentsConfigAsync(bool demoMode, CancellationToken cancellationToken)
+    public async Task<MarketInstrumentsConfig> GetMarketInstrumentsConfigAsync(CancellationToken cancellationToken)
     {
         const string sql = """
             select
@@ -42,24 +41,27 @@ public sealed class PostgresConfigurationRepository : IConfigurationRepository
 
         await using var connection = await _metadataDataSource.DataSource.OpenConnectionAsync(cancellationToken);
         var rows = (await connection.QueryAsync<InstrumentConfigRow>(new CommandDefinition(sql, cancellationToken: cancellationToken))).ToArray();
-        var filtered = demoMode
-            ? rows.Where(r => string.Equals(r.Exchange, MarketExchange.Demo.ToString(), StringComparison.OrdinalIgnoreCase))
-            : rows.Where(r => !string.Equals(r.Exchange, MarketExchange.Demo.ToString(), StringComparison.OrdinalIgnoreCase));
-
-        var profiles = filtered
+        var profiles = rows
             .GroupBy(r => $"{r.Exchange}::{r.MarketType}::{r.Transport}", StringComparer.OrdinalIgnoreCase)
             .Select(group =>
             {
                 var first = group.First();
+                if (!Enum.TryParse<MarketExchange>(first.Exchange, true, out var exchange))
+                {
+                    return null;
+                }
+
                 return new MarketInstrumentProfile
                 {
-                    Exchange = Enum.Parse<MarketExchange>(first.Exchange, true),
+                    Exchange = exchange,
                     MarketType = Enum.Parse<MarketType>(first.MarketType, true),
                     Transport = Enum.Parse<MarketDataSourceTransport>(first.Transport, true),
                     Symbols = group.Select(x => x.Symbol).Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
                     TargetUpdateInterval = TimeSpan.FromMilliseconds(group.Max(x => x.TargetUpdateIntervalMs))
                 };
             })
+            .Where(profile => profile is not null)
+            .Select(profile => profile!)
             .ToArray();
 
         return new MarketInstrumentsConfig

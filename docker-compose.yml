@@ -23,7 +23,6 @@
       dockerfile: src/TestTradeService/Dockerfile
     container_name: testtradeservice-backend
     environment:
-      DEMO_MODE: "true"
       Database__MetadataConnectionString: Host=db;Port=5432;Database=testtrade;Username=postgres;Password=postgres
       Database__TimeseriesConnectionString: Host=db;Port=5432;Database=testtrade;Username=postgres;Password=postgres
       Database__AutoMigrate: "true"

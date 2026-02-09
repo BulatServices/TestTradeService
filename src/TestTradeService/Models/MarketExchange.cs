@@ -1,4 +1,4 @@
-namespace TestTradeService.Models;
+﻿namespace TestTradeService.Models;
 
 /// <summary>
 /// Биржа (торговая площадка), к которой относятся рыночные данные.
@@ -11,22 +11,17 @@ public enum MarketExchange
     Unknown = 0,
 
     /// <summary>
-    /// Демонстрационная/тестовая площадка (данные генерируются внутри сервиса).
-    /// </summary>
-    Demo = 1,
-
-    /// <summary>
     /// Биржа Kraken.
     /// </summary>
-    Kraken = 2,
+    Kraken = 1,
 
     /// <summary>
     /// Биржа Coinbase (public Exchange API).
     /// </summary>
-    Coinbase = 3,
+    Coinbase = 2,
 
     /// <summary>
     /// Биржа Bybit.
     /// </summary>
-    Bybit = 4
+    Bybit = 3
 }

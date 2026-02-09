@@ -13,8 +13,6 @@ using TestTradeService.Storage.Configuration;
 using TestTradeService.Storage.Repositories;
 using TestTradeService.Storage.Services;
 
-var demoMode = string.Equals(Environment.GetEnvironmentVariable("DEMO_MODE"), "true", StringComparison.OrdinalIgnoreCase);
-
 var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.UseUrls("http://0.0.0.0:5000");
 
@@ -26,7 +24,7 @@ builder.Configuration
 var databaseOptions = builder.Configuration.GetSection(DatabaseOptions.SectionName).Get<DatabaseOptions>() ?? new DatabaseOptions();
 var databaseEnabled = databaseOptions.HasBothConnections();
 
-var instrumentsConfig = DefaultConfigurationFactory.CreateInstruments(demoMode);
+var instrumentsConfig = DefaultConfigurationFactory.CreateInstruments();
 var alertRuleConfigs = DefaultConfigurationFactory.CreateAlertRules();
 MetadataDataSource? metadataDataSource = null;
 TimeseriesDataSource? timeseriesDataSource = null;
@@ -43,7 +41,7 @@ if (databaseEnabled)
     }
 
     var repository = new PostgresConfigurationRepository(metadataDataSource);
-    var loadedInstruments = await repository.GetMarketInstrumentsConfigAsync(demoMode, CancellationToken.None);
+    var loadedInstruments = await repository.GetMarketInstrumentsConfigAsync(CancellationToken.None);
     var loadedRules = await repository.GetAlertRulesAsync(CancellationToken.None);
 
     if (loadedInstruments.Profiles.Count > 0)
@@ -120,7 +118,7 @@ builder.Services.AddSingleton<ISourceConfigService, SourceConfigService>();
 builder.Services.AddSingleton<MarketHubConnectionStateStore>();
 builder.Services.AddHostedService<MarketDataBroadcaster>();
 
-RegisterMarketDataSources(builder.Services, demoMode);
+RegisterMarketDataSources(builder.Services);
 builder.Services.AddIngestionSubsystem();
 
 builder.Services.AddSingleton<TradingSystemWorker>();
@@ -142,7 +140,7 @@ app.MapGet("/healthz", () => Results.Ok(new { status = "ok" }));
 
 await app.RunAsync();
 
-static void RegisterMarketDataSources(IServiceCollection services, bool demoMode)
+static void RegisterMarketDataSources(IServiceCollection services)
 {
     var sourcesAssembly = typeof(IMarketDataSource).Assembly;
 
@@ -150,16 +148,13 @@ static void RegisterMarketDataSources(IServiceCollection services, bool demoMode
         type is { IsAbstract: false, IsInterface: false }
         && typeof(IMarketDataSource).IsAssignableFrom(type);
 
-    static bool IsDemoSourceNamespace(string? ns) =>
-        string.Equals(ns, "TestTradeService.Services", StringComparison.Ordinal);
-
     static bool IsExchangeSourceNamespace(string? ns) =>
         ns?.StartsWith("TestTradeService.Services.Exchanges.", StringComparison.Ordinal) == true;
 
     var sourceTypes = sourcesAssembly
         .GetTypes()
         .Where(ImplementsMarketDataSource)
-        .Where(t => demoMode ? IsDemoSourceNamespace(t.Namespace) : IsExchangeSourceNamespace(t.Namespace))
+        .Where(t => IsExchangeSourceNamespace(t.Namespace))
         .OrderBy(t => t.FullName, StringComparer.Ordinal);
 
     foreach (var sourceType in sourceTypes)

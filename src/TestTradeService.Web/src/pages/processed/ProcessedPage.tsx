@@ -54,7 +54,7 @@ export function ProcessedPage() {
             style={{ width: 180 }}
             value={exchange}
             onChange={setExchange}
-            options={['Demo', 'Kraken', 'Coinbase', 'Bybit'].map((value) => ({ value }))}
+            options={['Kraken', 'Coinbase', 'Bybit'].map((value) => ({ value }))}
           />
           <Select
             placeholder="Тикер"
