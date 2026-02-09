@@ -22,6 +22,18 @@ describe('MonitoringPage', () => {
       timestamp: new Date().toISOString(),
       exchangeStats: {},
       sourceStats: {},
+      performanceReport: {
+        windowMinutes: 5,
+        totalWindowTickCount: 0,
+        totalWindowAggregateCount: 0,
+        totalWindowAvgDelayMs: 0,
+        totalWindowMaxDelayMs: 0,
+        totalWindowTickRatePerSec: 0,
+        totalWindowAggregateRatePerSec: 0,
+        sourcesOk: 0,
+        sourcesWarn: 0,
+        sourcesCritical: 0
+      },
       warnings: []
     });
     vi.mocked(getAlerts).mockResolvedValue({ items: [] });

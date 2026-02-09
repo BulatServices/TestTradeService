@@ -50,7 +50,13 @@ public sealed class MonitoringController : ControllerBase
                     TickCount = x.Value.TickCount,
                     AggregateCount = x.Value.AggregateCount,
                     AverageDelayMs = x.Value.AverageDelayMs,
-                    LastTickTime = x.Value.LastTickTime
+                    LastTickTime = x.Value.LastTickTime,
+                    WindowTickCount = x.Value.WindowTickCount,
+                    WindowAggregateCount = x.Value.WindowAggregateCount,
+                    WindowAvgDelayMs = x.Value.WindowAvgDelayMs,
+                    WindowMaxDelayMs = x.Value.WindowMaxDelayMs,
+                    WindowTickRatePerSec = x.Value.WindowTickRatePerSec,
+                    WindowAggregateRatePerSec = x.Value.WindowAggregateRatePerSec
                 }),
             SourceStats = snapshot.SourceStats.ToDictionary(
                 x => x.Key,
@@ -60,8 +66,29 @@ public sealed class MonitoringController : ControllerBase
                     TickCount = x.Value.TickCount,
                     AggregateCount = x.Value.AggregateCount,
                     AverageDelayMs = x.Value.AverageDelayMs,
-                    LastTickTime = x.Value.LastTickTime
+                    LastTickTime = x.Value.LastTickTime,
+                    Status = x.Value.Status.ToString(),
+                    LastTickAgeMs = x.Value.LastTickAgeMs,
+                    WindowTickCount = x.Value.WindowTickCount,
+                    WindowAggregateCount = x.Value.WindowAggregateCount,
+                    WindowAvgDelayMs = x.Value.WindowAvgDelayMs,
+                    WindowMaxDelayMs = x.Value.WindowMaxDelayMs,
+                    WindowTickRatePerSec = x.Value.WindowTickRatePerSec,
+                    WindowAggregateRatePerSec = x.Value.WindowAggregateRatePerSec
                 }),
+            PerformanceReport = new PerformanceReportDto
+            {
+                WindowMinutes = snapshot.PerformanceReport.WindowMinutes,
+                TotalWindowTickCount = snapshot.PerformanceReport.TotalWindowTickCount,
+                TotalWindowAggregateCount = snapshot.PerformanceReport.TotalWindowAggregateCount,
+                TotalWindowAvgDelayMs = snapshot.PerformanceReport.TotalWindowAvgDelayMs,
+                TotalWindowMaxDelayMs = snapshot.PerformanceReport.TotalWindowMaxDelayMs,
+                TotalWindowTickRatePerSec = snapshot.PerformanceReport.TotalWindowTickRatePerSec,
+                TotalWindowAggregateRatePerSec = snapshot.PerformanceReport.TotalWindowAggregateRatePerSec,
+                SourcesOk = snapshot.PerformanceReport.SourcesOk,
+                SourcesWarn = snapshot.PerformanceReport.SourcesWarn,
+                SourcesCritical = snapshot.PerformanceReport.SourcesCritical
+            },
             Warnings = snapshot.Warnings
         };
     }

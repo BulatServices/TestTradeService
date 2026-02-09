@@ -20,6 +20,18 @@ import { getMonitoringSnapshot } from '../../features/monitoring/api/monitoringA
 import { getAlertRules, getAlerts, putAlertRules } from '../../features/alerts/api/alertsApi';
 import { formatDateTime, formatNumber } from '../../shared/lib/format';
 import { AlertRuleConfigDto } from '../../entities/alerts/model/types';
+import { SourceStatsDto } from '../../entities/monitoring/model/types';
+
+function getStatusColor(status: SourceStatsDto['status']): 'green' | 'orange' | 'red' {
+  switch (status) {
+    case 'Ok':
+      return 'green';
+    case 'Warn':
+      return 'orange';
+    default:
+      return 'red';
+  }
+}
 
 const availableNotifierChannels = ['Console', 'File', 'EmailStub'] as const;
 const channelsParameterKey = 'channels';
@@ -98,6 +110,7 @@ export function MonitoringPage() {
 
   const sourceStatsRows = snapshotQuery.data ? Object.values(snapshotQuery.data.sourceStats) : [];
   const exchangeStatsRows = snapshotQuery.data ? Object.values(snapshotQuery.data.exchangeStats) : [];
+  const performanceReport = snapshotQuery.data?.performanceReport;
 
   const onlineCount = sourceStatsRows.filter((item) => Date.now() - new Date(item.lastTickTime).getTime() < 120_000).length;
 
@@ -139,6 +152,30 @@ export function MonitoringPage() {
         </Col>
       </Row>
 
+      <Card title={`Отчет о производительности (${performanceReport?.windowMinutes ?? 5} минут)`} className="section-card" loading={snapshotQuery.isLoading}>
+        <Row gutter={16}>
+          <Col xs={24} md={6}>
+            <Statistic title="Tick/s (5m)" value={formatNumber(performanceReport?.totalWindowTickRatePerSec ?? 0, 2)} />
+          </Col>
+          <Col xs={24} md={6}>
+            <Statistic title="Aggregate/s (5m)" value={formatNumber(performanceReport?.totalWindowAggregateRatePerSec ?? 0, 2)} />
+          </Col>
+          <Col xs={24} md={6}>
+            <Statistic title="Avg delay (5m), мс" value={formatNumber(performanceReport?.totalWindowAvgDelayMs ?? 0, 0)} />
+          </Col>
+          <Col xs={24} md={6}>
+            <Statistic title="Max delay (5m), мс" value={formatNumber(performanceReport?.totalWindowMaxDelayMs ?? 0, 0)} />
+          </Col>
+        </Row>
+        <Space style={{ marginTop: 16 }} wrap>
+          <Tag color="green">OK: {performanceReport?.sourcesOk ?? 0}</Tag>
+          <Tag color="orange">Warn: {performanceReport?.sourcesWarn ?? 0}</Tag>
+          <Tag color="red">Critical: {performanceReport?.sourcesCritical ?? 0}</Tag>
+          <Tag>Ticks (5m): {performanceReport?.totalWindowTickCount ?? 0}</Tag>
+          <Tag>Aggregates (5m): {performanceReport?.totalWindowAggregateCount ?? 0}</Tag>
+        </Space>
+      </Card>
+
       <Card title="Статистика по источникам" className="section-card" loading={snapshotQuery.isLoading}>
         <Table
           rowKey={(row) => row.source}
@@ -146,9 +183,19 @@ export function MonitoringPage() {
           pagination={false}
           columns={[
             { title: 'Источник', dataIndex: 'source' },
+            {
+              title: 'Статус',
+              dataIndex: 'status',
+              render: (value: SourceStatsDto['status']) => <Tag color={getStatusColor(value)}>{value}</Tag>
+            },
             { title: 'Тики', dataIndex: 'tickCount' },
             { title: 'Агрегаты', dataIndex: 'aggregateCount' },
             { title: 'Средняя задержка, мс', dataIndex: 'averageDelayMs', render: (v) => formatNumber(v, 0) },
+            { title: 'Возраст последнего тика, мс', dataIndex: 'lastTickAgeMs', render: (v) => formatNumber(v, 0) },
+            { title: 'Tick/s (5m)', dataIndex: 'windowTickRatePerSec', render: (v) => formatNumber(v, 2) },
+            { title: 'Agg/s (5m)', dataIndex: 'windowAggregateRatePerSec', render: (v) => formatNumber(v, 2) },
+            { title: 'Avg delay (5m), мс', dataIndex: 'windowAvgDelayMs', render: (v) => formatNumber(v, 0) },
+            { title: 'Max delay (5m), мс', dataIndex: 'windowMaxDelayMs', render: (v) => formatNumber(v, 0) },
             { title: 'Последний тик', dataIndex: 'lastTickTime', render: (v) => formatDateTime(v) }
           ]}
         />
@@ -164,6 +211,10 @@ export function MonitoringPage() {
             { title: 'Тики', dataIndex: 'tickCount' },
             { title: 'Агрегаты', dataIndex: 'aggregateCount' },
             { title: 'Средняя задержка, мс', dataIndex: 'averageDelayMs', render: (v) => formatNumber(v, 0) },
+            { title: 'Tick/s (5m)', dataIndex: 'windowTickRatePerSec', render: (v) => formatNumber(v, 2) },
+            { title: 'Agg/s (5m)', dataIndex: 'windowAggregateRatePerSec', render: (v) => formatNumber(v, 2) },
+            { title: 'Avg delay (5m), мс', dataIndex: 'windowAvgDelayMs', render: (v) => formatNumber(v, 0) },
+            { title: 'Max delay (5m), мс', dataIndex: 'windowMaxDelayMs', render: (v) => formatNumber(v, 0) },
             { title: 'Последний тик', dataIndex: 'lastTickTime', render: (v) => formatDateTime(v) }
           ]}
         />

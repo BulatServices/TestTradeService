@@ -335,6 +335,19 @@ public sealed class DataPipelineTests
             Timestamp = DateTimeOffset.UtcNow,
             ExchangeStats = new Dictionary<MarketExchange, ExchangeStats>(),
             SourceStats = new Dictionary<string, SourceStats>(),
+            PerformanceReport = new PerformanceReport
+            {
+                WindowMinutes = 5,
+                TotalWindowTickCount = 0,
+                TotalWindowAggregateCount = 0,
+                TotalWindowAvgDelayMs = 0,
+                TotalWindowMaxDelayMs = 0,
+                TotalWindowTickRatePerSec = 0,
+                TotalWindowAggregateRatePerSec = 0,
+                SourcesOk = 0,
+                SourcesWarn = 0,
+                SourcesCritical = 0
+            },
             Warnings = Array.Empty<string>()
         };
     }
