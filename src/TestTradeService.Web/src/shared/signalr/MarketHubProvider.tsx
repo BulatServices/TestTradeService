@@ -31,6 +31,9 @@ export function MarketHubProvider({ children }: PropsWithChildren) {
   useEffect(() => {
     const connection = createMarketHubConnection();
     connectionRef.current = connection;
+    const alertHandler = () => {
+      // Alerts can be consumed by specific pages; keep a default handler to avoid SignalR warnings.
+    };
 
     connection.onreconnecting(() => {
       setConnectionState('Переподключение');
@@ -44,6 +47,7 @@ export function MarketHubProvider({ children }: PropsWithChildren) {
     connection.onclose(() => {
       setConnectionState('Отключено');
     });
+    connection.on('alert', alertHandler);
 
     const start = async () => {
       try {
@@ -58,6 +62,7 @@ export function MarketHubProvider({ children }: PropsWithChildren) {
     void start();
 
     return () => {
+      connection.off('alert', alertHandler);
       void connection.stop();
     };
   }, []);
