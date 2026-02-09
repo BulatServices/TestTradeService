@@ -23,12 +23,14 @@ public sealed class MarketInstrumentsConfigTests
                 {
                     Exchange = MarketExchange.Bybit,
                     MarketType = MarketType.Spot,
+                    Transport = MarketDataSourceTransport.WebSocket,
                     Symbols = new[] { "BTCUSDT", "ETHUSDT" }
                 },
                 new MarketInstrumentProfile
                 {
                     Exchange = MarketExchange.Bybit,
                     MarketType = MarketType.Perp,
+                    Transport = MarketDataSourceTransport.WebSocket,
                     Symbols = new[] { "ETHUSDT", "BTCUSDT" }
                 }
             }
@@ -51,6 +53,7 @@ public sealed class MarketInstrumentsConfigTests
         {
             Exchange = MarketExchange.Coinbase,
             MarketType = MarketType.Spot,
+            Transport = MarketDataSourceTransport.WebSocket,
             Symbols = new[] { "BTC-USD" }
         };
         var config = new MarketInstrumentsConfig
@@ -62,6 +65,7 @@ public sealed class MarketInstrumentsConfigTests
                 {
                     Exchange = MarketExchange.Coinbase,
                     MarketType = MarketType.Perp,
+                    Transport = MarketDataSourceTransport.WebSocket,
                     Symbols = new[] { "ETH-USD" }
                 }
             }

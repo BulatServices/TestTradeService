@@ -10,4 +10,9 @@
 - Допускается `/// <inheritdoc/>` только если наследуемая документация уже на русском языке и полностью описывает поведение.
 
 Если находишь `public` метод/свойство без XML-комментария в затрагиваемых файлах — добавляй документацию в рамках текущего изменения.
+
+## Запуск тестов
+
+- Юнит-тесты в этом репозитории запускать по проекту тестов, а не по solution.
+- Используй команду: `dotnet test src\TestTradeService.Tests\TestTradeService.Tests.csproj --nologo --verbosity minimal --blame-hang --blame-hang-timeout 2m`.
 </INSTRUCTIONS>

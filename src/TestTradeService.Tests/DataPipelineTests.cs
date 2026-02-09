@@ -1,4 +1,5 @@
 using System.Threading.Channels;
+using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Logging.Abstractions;
 using TestTradeService.Ingestion.Configuration;
 using TestTradeService.Interfaces;
@@ -28,6 +29,7 @@ public sealed class DataPipelineTests
             alertingStorage,
             NullLogger<AlertingService>.Instance);
         var monitoring = new CapturingMonitoringService();
+        var eventBus = new CapturingMarketDataEventBus();
         var config = new MarketInstrumentsConfig
         {
             Profiles = new[]
@@ -36,6 +38,7 @@ public sealed class DataPipelineTests
                 {
                     Exchange = MarketExchange.Bybit,
                     MarketType = MarketType.Spot,
+                    Transport = MarketDataSourceTransport.WebSocket,
                     Symbols = new[] { "BTCUSDT" }
                 }
             }
@@ -45,6 +48,7 @@ public sealed class DataPipelineTests
             storage,
             alerting,
             monitoring,
+            eventBus,
             config,
             NullLogger<DataPipeline>.Instance);
 
@@ -87,6 +91,7 @@ public sealed class DataPipelineTests
             alertingStorage,
             NullLogger<AlertingService>.Instance);
         var monitoring = new CapturingMonitoringService();
+        var eventBus = new CapturingMarketDataEventBus();
         var config = new MarketInstrumentsConfig
         {
             Profiles = new[]
@@ -95,6 +100,7 @@ public sealed class DataPipelineTests
                 {
                     Exchange = MarketExchange.Bybit,
                     MarketType = MarketType.Spot,
+                    Transport = MarketDataSourceTransport.WebSocket,
                     Symbols = new[] { "BTCUSDT" }
                 }
             }
@@ -104,6 +110,7 @@ public sealed class DataPipelineTests
             storage,
             alerting,
             monitoring,
+            eventBus,
             config,
             NullLogger<DataPipeline>.Instance);
 
@@ -144,6 +151,7 @@ public sealed class DataPipelineTests
             alertingStorage,
             NullLogger<AlertingService>.Instance);
         var monitoring = new CapturingMonitoringService();
+        var eventBus = new CapturingMarketDataEventBus();
         var config = new MarketInstrumentsConfig
         {
             Profiles = new[]
@@ -152,6 +160,7 @@ public sealed class DataPipelineTests
                 {
                     Exchange = MarketExchange.Bybit,
                     MarketType = MarketType.Spot,
+                    Transport = MarketDataSourceTransport.WebSocket,
                     Symbols = new[] { "BTCUSDT" }
                 }
             }
@@ -161,6 +170,7 @@ public sealed class DataPipelineTests
             storage,
             alerting,
             monitoring,
+            eventBus,
             config,
             NullLogger<DataPipeline>.Instance);
 
@@ -311,5 +321,30 @@ public sealed class DataPipelineTests
             SourceStats = new Dictionary<string, SourceStats>(),
             Warnings = Array.Empty<string>()
         };
+    }
+
+    private sealed class CapturingMarketDataEventBus : IMarketDataEventBus
+    {
+        public void PublishTick(NormalizedTick tick)
+        {
+        }
+
+        public void PublishAggregate(AggregatedCandle candle)
+        {
+        }
+
+        public void PublishAlert(Alert alert)
+        {
+        }
+
+        public void PublishMonitoring(MonitoringSnapshot snapshot)
+        {
+        }
+
+        public async IAsyncEnumerable<MarketDataEvent> ReadAllAsync([EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            await Task.CompletedTask;
+            yield break;
+        }
     }
 }
